@@ -1,0 +1,410 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:e-reader:contract:settings.schema.json:0.8.0",
+  "title": "E_Reader Settings v1 (effective object)",
+  "description": "Contract v0.8.0. Validates the COMPLETE effective settings object returned by settings_get and accepted by settings_set. settings.json on disk may omit keys and may contain unknown keys (see settings.md). Defaults are those of contract/settings.defaults.json; ReadingStyle defaults are the builtin.dark preset. x-* keywords are annotations (x-scope: P = preset field, G = global; x-step: UI slider step; x-unit; x-managed: only changeable through the named command).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version", "activePresetId", "presets", "styleOverrides", "reader", "layout", "epub", "chrome", "cursor",
+    "scroll", "autoscroll", "txt", "library", "window", "bossKey", "stats", "keybindings", "ui"
+  ],
+  "properties": {
+    "version": { "description": "Settings schema version (schemaVersion).", "const": 1, "default": 1 },
+    "activePresetId": {
+      "description": "A built-in preset id, or the id of an entry in presets.",
+      "$ref": "#/$defs/PresetId",
+      "default": "builtin.dark",
+      "x-scope": "G"
+    },
+    "presets": {
+      "description": "Custom presets only. Built-ins live in UI code (settings.md).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/Preset" },
+      "default": [],
+      "x-scope": "G"
+    },
+    "styleOverrides": {
+      "description": "Unsaved edits on top of the active preset's style. {} = unmodified.",
+      "$ref": "#/$defs/ReadingStylePatch",
+      "default": {},
+      "x-scope": "G"
+    },
+    "reader": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["flow", "pagesPerView"],
+      "properties": {
+        "flow": { "enum": ["scroll", "paged"], "default": "scroll", "x-scope": "G" },
+        "pagesPerView": {
+          "description": "2 is opt-in only; the app never sets it on its own.",
+          "enum": [1, 2],
+          "default": 1,
+          "x-scope": "G"
+        }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minSpreadWidthPx"],
+      "properties": {
+        "minSpreadWidthPx": { "type": "integer", "minimum": 600, "maximum": 3000, "default": 1000, "x-unit": "px", "x-scope": "G" }
+      }
+    },
+    "epub": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["styleOverride"],
+      "properties": {
+        "styleOverride": { "enum": ["minimal", "balanced", "full"], "default": "balanced", "x-scope": "G" }
+      }
+    },
+    "chrome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["autoHideDelayMs", "footerProgress"],
+      "properties": {
+        "footerProgress": { "description": "Optional in-page reader footer readout, visible even while chrome is hidden. off = hidden; percent = book percentage; chapter = current/total chapters; both = both readouts. Creates no extra bar.", "enum": ["off", "percent", "chapter", "both"], "default": "off", "x-scope": "G" },
+        "autoHideDelayMs": { "type": "integer", "minimum": 500, "maximum": 10000, "default": 2000, "x-unit": "ms", "x-scope": "G" }
+      }
+    },
+    "cursor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["autoHideDelayMs"],
+      "properties": {
+        "autoHideDelayMs": {
+          "description": "0 = never hide the cursor.",
+          "type": "integer",
+          "anyOf": [{ "const": 0 }, { "minimum": 500, "maximum": 10000 }],
+          "default": 1500,
+          "x-unit": "ms",
+          "x-scope": "G"
+        }
+      }
+    },
+    "scroll": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["arrowSpeed", "startRampMs", "acceleration", "accelMax", "accelRampMs", "stopDecelMs", "tapLines", "pageOverlapLines"],
+      "properties": {
+        "arrowSpeed": { "type": "number", "minimum": 60, "maximum": 4000, "default": 720, "x-unit": "px/s", "x-scope": "G" },
+        "startRampMs": { "type": "integer", "minimum": 0, "maximum": 400, "default": 80, "x-unit": "ms", "x-scope": "G" },
+        "acceleration": { "type": "boolean", "default": true, "x-scope": "G" },
+        "accelMax": { "type": "number", "minimum": 1, "maximum": 6, "default": 2.5, "x-unit": "x", "x-scope": "G" },
+        "accelRampMs": { "type": "integer", "minimum": 100, "maximum": 4000, "default": 800, "x-unit": "ms", "x-scope": "G" },
+        "stopDecelMs": { "type": "integer", "minimum": 0, "maximum": 500, "default": 100, "x-unit": "ms", "x-scope": "G" },
+        "tapLines": { "type": "integer", "minimum": 1, "maximum": 10, "default": 3, "x-scope": "G" },
+        "pageOverlapLines": { "type": "integer", "minimum": 0, "maximum": 10, "default": 2, "x-scope": "G" }
+      }
+    },
+    "autoscroll": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["speed", "step", "pauseOnBlur"],
+      "properties": {
+        "speed": { "type": "number", "minimum": 5, "maximum": 400, "default": 40, "x-unit": "px/s", "x-scope": "G" },
+        "step": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10, "x-unit": "%", "x-scope": "G" },
+        "pauseOnBlur": { "type": "boolean", "default": true, "x-scope": "G" }
+      }
+    },
+    "txt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chapterRegex", "headingMaxChars", "fallbackChunkChars", "paragraphMode"],
+      "properties": {
+        "chapterRegex": {
+          "description": "fancy-regex syntax; Rust compiles it with the multiline flag. Must compile (checked by Rust, error TXT_REGEX_INVALID inside SETTINGS_INVALID issues).",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "default": "^[ \\t　]*(?:第[0-9０-９零〇一二三四五六七八九十百千万两]+[章回节節卷集部篇](?:[ \\t　:：·.、-].*)?|卷[0-9０-９一二三四五六七八九十百千]+.*|(?:Chapter|CHAPTER)\\s+(?:\\d+|[IVXLCDM]+)\\b.*|序章|序言|楔子|引子|尾声|尾聲|后记|後記|番外.*)[ \\t　]*$",
+          "x-scope": "G, B"
+        },
+        "headingMaxChars": { "type": "integer", "minimum": 4, "maximum": 100, "default": 40, "x-scope": "G, B" },
+        "fallbackChunkChars": { "type": "integer", "minimum": 2000, "maximum": 100000, "default": 10000, "x-scope": "G" },
+        "paragraphMode": { "enum": ["auto", "line", "blank"], "default": "auto", "x-scope": "G, B" }
+      }
+    },
+    "library": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["storageMode", "folder", "view", "sort", "sortDir", "filter"],
+      "properties": {
+        "storageMode": { "const": "copy", "default": "copy", "x-scope": "G" },
+        "folder": {
+          "description": "null = default rule: <Documents known folder>\\E_Reader Library, or <profile>\\library when E_READER_PROFILE_DIR is set.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/AbsPath" }],
+          "default": null,
+          "x-scope": "G",
+          "x-managed": "library_set_folder"
+        },
+        "view": { "enum": ["grid", "list"], "default": "grid", "x-scope": "G" },
+        "sort": { "enum": ["lastRead", "added", "title", "author", "progress"], "default": "lastRead", "x-scope": "G" },
+        "sortDir": { "enum": ["asc", "desc"], "default": "desc", "x-scope": "G" },
+        "filter": { "enum": ["all", "reading", "unread", "finished"], "default": "all", "x-scope": "G" }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["titleBar"],
+      "properties": {
+        "titleBar": {
+          "description": "native = fallback; restart required.",
+          "enum": ["custom", "native"],
+          "default": "custom",
+          "x-scope": "G"
+        }
+      }
+    },
+    "bossKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "shortcut"],
+      "properties": {
+        "enabled": {
+          "description": "Default true. In a test profile (E_READER_PROFILE_DIR set) the default is false.",
+          "type": "boolean",
+          "default": true,
+          "x-scope": "G",
+          "x-managed": "boss_set_enabled"
+        },
+        "shortcut": { "$ref": "#/$defs/BossChord", "default": "Ctrl+Alt+B", "x-scope": "G", "x-managed": "boss_set_shortcut" }
+      }
+    },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "idleTimeoutSec"],
+      "properties": {
+        "enabled": { "type": "boolean", "default": true, "x-scope": "G" },
+        "idleTimeoutSec": { "type": "integer", "minimum": 30, "maximum": 900, "default": 180, "x-unit": "s", "x-scope": "G" }
+      }
+    },
+    "keybindings": {
+      "description": "Diffs from the default keymap only (settings.md). [] = action unbound.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/ActionId" },
+      "additionalProperties": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/Chord" },
+        "maxItems": 3,
+        "uniqueItems": true
+      },
+      "default": {},
+      "x-scope": "G"
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["settingsLastPane", "tocOpen"],
+      "properties": {
+        "settingsLastPane": {
+          "enum": ["general", "reading", "scrolling", "keyboard", "library", "txtCjk", "stats", "about"],
+          "default": "general",
+          "x-scope": "G"
+        },
+        "tocOpen": { "type": "boolean", "default": false, "x-scope": "G" }
+      }
+    }
+  },
+  "$defs": {
+    "ColorHex": { "type": "string", "pattern": "^#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$" },
+    "AbsPath": {
+      "description": "Absolute Windows drive path or UNC with both server and share; no device paths or NUL. Native canonical validation also enforces the library boundary in settings.md.",
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 1024,
+      "pattern": "^(?![\\s\\S]*[\\u0000-\\u001f])(?:[A-Za-z]:\\\\|\\\\\\\\(?![?.]\\\\)[^\\\\/]+\\\\[^\\\\/]+(?:\\\\|$))"
+    },
+    "Chord": {
+      "description": "Optional modifiers in the order Ctrl+, Alt+, Shift+, then one KeyboardEvent.code token; KeyA..KeyZ are written A..Z and Digit0..Digit9 are written 0..9.",
+      "type": "string",
+      "pattern": "^(?:Ctrl\\+)?(?:Alt\\+)?(?:Shift\\+)?(?:[A-Z0-9]|F(?:[1-9]|1[0-9]|2[0-4])|Numpad(?:[0-9]|Add|Subtract|Multiply|Divide|Decimal|Enter)|Arrow(?:Up|Down|Left|Right)|Page(?:Up|Down)|Home|End|Insert|Delete|Backspace|Enter|Tab|Escape|Space|Backquote|Minus|Equal|BracketLeft|BracketRight|Backslash|Semicolon|Quote|Comma|Period|Slash|IntlBackslash|IntlRo|IntlYen|Pause|ScrollLock|PrintScreen|ContextMenu)$"
+    },
+    "BossChord": {
+      "description": "A Chord with at least one modifier, or exactly Pause, ScrollLock or F13..F24.",
+      "allOf": [
+        { "$ref": "#/$defs/Chord" },
+        {
+          "anyOf": [
+            { "pattern": "^(?:Ctrl|Alt|Shift)\\+" },
+            { "pattern": "^(?:Pause|ScrollLock|F1[3-9]|F2[0-4])$" }
+          ]
+        }
+      ]
+    },
+    "ActionId": {
+      "enum": [
+        "scroll.down", "scroll.up", "page.next", "page.prev", "chapter.start", "chapter.end", "book.start", "book.end",
+        "toc.toggle", "bookmarks.show", "bookmark.toggle", "appearance.toggle",
+        "chrome.toggle", "fullscreen.toggle", "font.increase", "font.decrease", "font.reset", "layout.toggleFlow",
+        "layout.togglePages", "autoscroll.toggle", "book.close", "dismiss",
+        "autoscroll.pause", "autoscroll.faster", "autoscroll.slower",
+        "library.import", "library.search", "library.viewGrid", "library.viewList", "library.open", "library.remove",
+        "library.selectAll",
+        "settings.open", "app.quit"
+      ]
+    },
+    "PresetId": {
+      "type": "string",
+      "pattern": "^(?:builtin\\.(?:dark|sepia|light|night)|custom\\.[A-Za-z0-9_-]{1,64})$"
+    },
+    "CustomPresetId": { "type": "string", "pattern": "^custom\\.[A-Za-z0-9_-]{1,64}$" },
+    "FontFamilyName": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "FontFallback": { "enum": ["serif", "sans-serif"] },
+    "FontSize": { "type": "integer", "minimum": 10, "maximum": 72, "x-unit": "px", "x-step": 1 },
+    "FontWeight": { "type": "integer", "minimum": 100, "maximum": 900, "x-step": 10 },
+    "LineHeight": { "type": "number", "minimum": 1.0, "maximum": 3.0, "x-step": 0.05 },
+    "LetterSpacing": { "type": "number", "minimum": -0.05, "maximum": 0.3, "x-unit": "em", "x-step": 0.005 },
+    "ParagraphSpacing": { "type": "number", "minimum": 0, "maximum": 3, "x-unit": "em", "x-step": 0.1 },
+    "IndentMode": { "description": "TXT treats publisher as force.", "enum": ["publisher", "force", "none"] },
+    "IndentSize": { "type": "number", "minimum": 0, "maximum": 4, "x-unit": "em", "x-step": 0.5 },
+    "TextAlign": { "description": "Justified Latin text gets automatic hyphenation.", "enum": ["publisher", "left", "justify"] },
+    "MarginX": { "type": "integer", "minimum": 0, "maximum": 400, "x-unit": "px" },
+    "MarginY": { "type": "integer", "minimum": 0, "maximum": 200, "x-unit": "px" },
+    "MaxLineWidthEm": {
+      "description": "0 = fill the available width minus margins (still one column).",
+      "type": "number",
+      "anyOf": [{ "const": 0 }, { "minimum": 15, "maximum": 120 }],
+      "x-unit": "em"
+    },
+    "PageGap": { "description": "Two-page layouts only.", "type": "integer", "minimum": 0, "maximum": 200, "x-unit": "px" },
+    "ReadingStyle": {
+      "description": "PRD 8.1. Defaults = builtin.dark.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["colors", "font", "text", "layout", "cjk"],
+      "properties": {
+        "colors": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["background", "text", "accent", "selection"],
+          "properties": {
+            "background": { "$ref": "#/$defs/ColorHex", "default": "#17181B", "x-scope": "P" },
+            "text": { "$ref": "#/$defs/ColorHex", "default": "#D6D1C7", "x-scope": "P" },
+            "accent": { "$ref": "#/$defs/ColorHex", "default": "#D9A55B", "x-scope": "P" },
+            "selection": { "$ref": "#/$defs/ColorHex", "default": "#D9A55B52", "x-scope": "P" }
+          }
+        },
+        "font": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["latin", "cjk", "fallback", "size", "weight"],
+          "properties": {
+            "latin": { "$ref": "#/$defs/FontFamilyName", "default": "Sitka Text", "x-scope": "P" },
+            "cjk": { "$ref": "#/$defs/FontFamilyName", "default": "Microsoft YaHei", "x-scope": "P" },
+            "fallback": { "$ref": "#/$defs/FontFallback", "default": "serif", "x-scope": "P" },
+            "size": { "$ref": "#/$defs/FontSize", "default": 20, "x-scope": "P" },
+            "weight": { "$ref": "#/$defs/FontWeight", "default": 400, "x-scope": "P" }
+          }
+        },
+        "text": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lineHeight", "letterSpacing", "paragraphSpacing", "indentMode", "indentSize", "align"],
+          "properties": {
+            "lineHeight": { "$ref": "#/$defs/LineHeight", "default": 1.75, "x-scope": "P" },
+            "letterSpacing": { "$ref": "#/$defs/LetterSpacing", "default": 0, "x-scope": "P" },
+            "paragraphSpacing": { "$ref": "#/$defs/ParagraphSpacing", "default": 0.5, "x-scope": "P" },
+            "indentMode": { "$ref": "#/$defs/IndentMode", "default": "publisher", "x-scope": "P" },
+            "indentSize": { "$ref": "#/$defs/IndentSize", "default": 2, "x-scope": "P" },
+            "align": { "$ref": "#/$defs/TextAlign", "default": "justify", "x-scope": "P" }
+          }
+        },
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["marginX", "marginY", "maxLineWidthEm", "pageGap"],
+          "properties": {
+            "marginX": { "$ref": "#/$defs/MarginX", "default": 48, "x-scope": "P" },
+            "marginY": { "$ref": "#/$defs/MarginY", "default": 40, "x-scope": "P" },
+            "maxLineWidthEm": { "$ref": "#/$defs/MaxLineWidthEm", "default": 36, "x-scope": "P" },
+            "pageGap": { "$ref": "#/$defs/PageGap", "default": 48, "x-scope": "P" }
+          }
+        },
+        "cjk": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["punctuationTrim", "autospace"],
+          "properties": {
+            "punctuationTrim": { "type": "boolean", "default": true, "x-scope": "P" },
+            "autospace": { "type": "boolean", "default": true, "x-scope": "P" }
+          }
+        }
+      }
+    },
+    "ReadingStylePatch": {
+      "description": "Sparse ReadingStyle: every key optional. Absent = use the active preset's value.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "colors": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "background": { "$ref": "#/$defs/ColorHex" },
+            "text": { "$ref": "#/$defs/ColorHex" },
+            "accent": { "$ref": "#/$defs/ColorHex" },
+            "selection": { "$ref": "#/$defs/ColorHex" }
+          }
+        },
+        "font": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "latin": { "$ref": "#/$defs/FontFamilyName" },
+            "cjk": { "$ref": "#/$defs/FontFamilyName" },
+            "fallback": { "$ref": "#/$defs/FontFallback" },
+            "size": { "$ref": "#/$defs/FontSize" },
+            "weight": { "$ref": "#/$defs/FontWeight" }
+          }
+        },
+        "text": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "lineHeight": { "$ref": "#/$defs/LineHeight" },
+            "letterSpacing": { "$ref": "#/$defs/LetterSpacing" },
+            "paragraphSpacing": { "$ref": "#/$defs/ParagraphSpacing" },
+            "indentMode": { "$ref": "#/$defs/IndentMode" },
+            "indentSize": { "$ref": "#/$defs/IndentSize" },
+            "align": { "$ref": "#/$defs/TextAlign" }
+          }
+        },
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "marginX": { "$ref": "#/$defs/MarginX" },
+            "marginY": { "$ref": "#/$defs/MarginY" },
+            "maxLineWidthEm": { "$ref": "#/$defs/MaxLineWidthEm" },
+            "pageGap": { "$ref": "#/$defs/PageGap" }
+          }
+        },
+        "cjk": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "punctuationTrim": { "type": "boolean" },
+            "autospace": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "Preset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "builtIn", "style", "updatedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/CustomPresetId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 60, "pattern": "\\S" },
+        "builtIn": { "const": false },
+        "style": { "$ref": "#/$defs/ReadingStyle" },
+        "updatedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991, "x-unit": "unix ms UTC" }
+      }
+    }
+  }
+}

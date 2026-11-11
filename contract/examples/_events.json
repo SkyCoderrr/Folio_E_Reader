@@ -1,0 +1,153 @@
+{
+  "app://close-requested": [null],
+  "window://state-changed": [
+    { "maximized": true, "minimized": false, "fullscreen": false, "focused": true, "visible": true, "scaleFactor": 1.5 }
+  ],
+  "window://caption-state": [
+    { "hovered": "maximize", "pressed": null },
+    { "hovered": null, "pressed": null }
+  ],
+  "settings://changed": [
+    {
+      "settings": {
+        "version": 1,
+        "activePresetId": "builtin.dark",
+        "presets": [],
+        "styleOverrides": {},
+        "reader": { "flow": "scroll", "pagesPerView": 1 },
+        "layout": { "minSpreadWidthPx": 1000 },
+        "epub": { "styleOverride": "balanced" },
+        "chrome": { "autoHideDelayMs": 2000, "footerProgress": "off" },
+        "cursor": { "autoHideDelayMs": 1500 },
+        "scroll": {
+          "arrowSpeed": 720,
+          "startRampMs": 80,
+          "acceleration": true,
+          "accelMax": 2.5,
+          "accelRampMs": 800,
+          "stopDecelMs": 100,
+          "tapLines": 3,
+          "pageOverlapLines": 2
+        },
+        "autoscroll": { "speed": 40, "step": 10, "pauseOnBlur": true },
+        "txt": {
+          "chapterRegex": "^[ \\t　]*(?:第[0-9０-９零〇一二三四五六七八九十百千万两]+[章回节節卷集部篇](?:[ \\t　:：·.、-].*)?|卷[0-9０-９一二三四五六七八九十百千]+.*|(?:Chapter|CHAPTER)\\s+(?:\\d+|[IVXLCDM]+)\\b.*|序章|序言|楔子|引子|尾声|尾聲|后记|後記|番外.*)[ \\t　]*$",
+          "headingMaxChars": 40,
+          "fallbackChunkChars": 10000,
+          "paragraphMode": "auto"
+        },
+        "library": { "storageMode": "copy", "folder": null, "view": "grid", "sort": "lastRead", "sortDir": "desc", "filter": "all" },
+        "window": { "titleBar": "custom" },
+        "bossKey": { "enabled": true, "shortcut": "Ctrl+Alt+R" },
+        "stats": { "enabled": true, "idleTimeoutSec": 180 },
+        "keybindings": {},
+        "ui": { "settingsLastPane": "keyboard", "tocOpen": false }
+      },
+      "cause": "bossKey"
+    }
+  ],
+  "import://item": [
+    {
+      "jobId": "6f1c2b9e-3d4a-4b8f-9a2e-1c7d5e0f3a21",
+      "index": 0,
+      "total": 4,
+      "path": "C:\\Users\\dany\\Downloads\\a-tale-of-two-cities.epub",
+      "fileName": "a-tale-of-two-cities.epub",
+      "outcome": "added",
+      "book": {
+        "id": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d",
+        "format": "epub",
+        "title": "A Tale of Two Cities",
+        "author": "Charles Dickens",
+        "language": "en",
+        "fileName": "a-tale-of-two-cities.epub",
+        "filePath": "C:\\Users\\dany\\AppData\\Local\\Temp\\e_reader_test\\run-01\\library\\3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d.epub",
+        "fileSize": 812340,
+        "fileMissing": false,
+        "coverPath": "C:\\Users\\dany\\AppData\\Local\\Temp\\e_reader_test\\run-01\\library\\covers\\3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d.jpg",
+        "totalChars": null,
+        "progress": 0,
+        "addedAt": 1794211200000,
+        "lastOpenedAt": null,
+        "finishedAt": null
+      },
+      "error": null
+    },
+    {
+      "jobId": "6f1c2b9e-3d4a-4b8f-9a2e-1c7d5e0f3a21",
+      "index": 1,
+      "total": 4,
+      "path": "C:\\Users\\dany\\Downloads\\novels\\broken.epub",
+      "fileName": "broken.epub",
+      "outcome": "failed",
+      "book": null,
+      "error": { "code": "EPUB_INVALID", "message": "zip central directory not found", "details": { "reason": "not a zip archive" } }
+    },
+    {
+      "jobId": "6f1c2b9e-3d4a-4b8f-9a2e-1c7d5e0f3a21",
+      "index": 2,
+      "total": 4,
+      "path": "C:\\Users\\dany\\Downloads\\novels\\三体.txt",
+      "fileName": "三体.txt",
+      "outcome": "duplicate",
+      "book": {
+        "id": "9b1e47c2a0d35f8e6c7b2a1d0e9f8a7b",
+        "format": "txt",
+        "title": "三体",
+        "author": "刘慈欣",
+        "language": null,
+        "fileName": "三体.txt",
+        "filePath": "C:\\Users\\dany\\AppData\\Local\\Temp\\e_reader_test\\run-01\\library\\9b1e47c2a0d35f8e6c7b2a1d0e9f8a7b.txt",
+        "fileSize": 1873420,
+        "fileMissing": false,
+        "coverPath": null,
+        "totalChars": null,
+        "progress": 0,
+        "addedAt": 1794211260000,
+        "lastOpenedAt": null,
+        "finishedAt": null
+      },
+      "error": null
+    },
+    {
+      "jobId": "6f1c2b9e-3d4a-4b8f-9a2e-1c7d5e0f3a21",
+      "index": 3,
+      "total": 4,
+      "path": "C:\\Users\\dany\\Downloads\\scan.pdf",
+      "fileName": "scan.pdf",
+      "outcome": "unsupported",
+      "book": null,
+      "error": null
+    }
+  ],
+  "import://done": [
+    {
+      "jobId": "6f1c2b9e-3d4a-4b8f-9a2e-1c7d5e0f3a21",
+      "total": 4,
+      "added": 1,
+      "duplicates": 1,
+      "unsupported": ["scan.pdf"],
+      "failed": [
+        {
+          "path": "C:\\Users\\dany\\Downloads\\novels\\broken.epub",
+          "fileName": "broken.epub",
+          "error": { "code": "EPUB_INVALID", "message": "zip central directory not found", "details": { "reason": "not a zip archive" } }
+        }
+      ]
+    }
+  ],
+  "boss://hidden": [{ "source": "bossKey" }],
+  "boss://shown": [{ "source": "bossKey" }, { "source": "secondInstance" }],
+  "boss://register-failed": [
+    {
+      "shortcut": "Ctrl+Alt+B",
+      "error": { "code": "SHORTCUT_IN_USE", "message": "RegisterHotKey failed: hotkey already registered", "details": { "shortcut": "Ctrl+Alt+B" } }
+    },
+    {
+      "shortcut": "Ctrl+Alt+B",
+      "error": { "code": "INTERNAL", "message": "Boss-key rollback failed; query boss_get_status for actual state" }
+    }
+  ],
+  "tray://open-library": [null],
+  "tray://open-settings": [null]
+}

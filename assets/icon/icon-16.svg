@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <!-- 16 px hand-tuned variant (title bar, tray at 100 %, small lists). Pixel-exact, every rect on whole pixels.
+       Pages are 5 px wide with a 2 px spine; the slant toward the spine is a single 1 px step softened by
+       one half-tone pixel, so it stays sharp instead of an anti-aliased grey ramp. -->
+  <rect x="0" y="0" width="16" height="16" rx="3" fill="#141518" shape-rendering="geometricPrecision"/>
+  <g fill="#F2B366">
+    <rect x="2" y="4" width="2" height="7"/>
+    <rect x="4" y="5" width="1" height="6"/>
+    <rect x="5" y="5" width="2" height="7"/>
+    <rect x="4" y="4" width="1" height="1" fill-opacity="0.5"/>
+    <rect x="4" y="11" width="1" height="1" fill-opacity="0.5"/>
+  </g>
+  <g fill="#DA924A">
+    <rect x="12" y="4" width="2" height="7"/>
+    <rect x="11" y="5" width="1" height="6"/>
+    <rect x="9" y="5" width="2" height="7"/>
+    <rect x="11" y="4" width="1" height="1" fill-opacity="0.5"/>
+    <rect x="11" y="11" width="1" height="1" fill-opacity="0.5"/>
+  </g>
+</svg>

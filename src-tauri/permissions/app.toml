@@ -1,0 +1,15 @@
+# Preserve existing app commands when enabling the application ACL.
+[[permission]]
+identifier = "allow-existing-app-commands"
+description = "Existing local main-window application commands."
+commands.allow = ["app_info","app_quit","window_get_state","window_minimize","window_toggle_maximize","window_start_drag","window_start_resize","window_set_fullscreen","window_set_caption_rects","kv_get","kv_set","settings_get","settings_patch","settings_set","fonts_list","boss_get_status","boss_set_enabled","boss_set_shortcut","dialog_pick_folder","library_set_folder","dialog_pick_books","library_import","library_list","book_get","library_remove","book_open","position_get","position_save","txt_prepare","txt_preview_split","txt_prefs_set","bookmarks_list","bookmark_add","stats_session_save","stats_query","book_set_total_chars","bookmark_remove"]
+
+[[permission]]
+identifier = "allow-chapters-read-get"
+description = "Read a book's read-chapter keys."
+commands.allow = ["chapters_read_get"]
+
+[[permission]]
+identifier = "allow-chapter-mark-read"
+description = "Persist a read chapter for a book."
+commands.allow = ["chapter_mark_read"]

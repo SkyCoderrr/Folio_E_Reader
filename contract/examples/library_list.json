@@ -1,0 +1,39 @@
+{
+  "args": {},
+  "result": [
+    {
+      "id": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d",
+      "format": "epub",
+      "title": "A Tale of Two Cities",
+      "author": "Charles Dickens",
+      "language": "en",
+      "fileName": "a-tale-of-two-cities.epub",
+      "filePath": "C:\\Users\\dany\\AppData\\Local\\Temp\\e_reader_test\\run-01\\library\\3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d.epub",
+      "fileSize": 812340,
+      "fileMissing": false,
+      "coverPath": "C:\\Users\\dany\\AppData\\Local\\Temp\\e_reader_test\\run-01\\library\\covers\\3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d.jpg",
+      "totalChars": null,
+      "progress": 0.1834,
+      "addedAt": 1794211200000,
+      "lastOpenedAt": 1794225600000,
+      "finishedAt": null
+    },
+    {
+      "id": "9b1e47c2a0d35f8e6c7b2a1d0e9f8a7b",
+      "format": "txt",
+      "title": "三体",
+      "author": "刘慈欣",
+      "language": null,
+      "fileName": "三体.txt",
+      "filePath": "C:\\Users\\dany\\AppData\\Local\\Temp\\e_reader_test\\run-01\\library\\9b1e47c2a0d35f8e6c7b2a1d0e9f8a7b.txt",
+      "fileSize": 1873420,
+      "fileMissing": false,
+      "coverPath": null,
+      "totalChars": null,
+      "progress": 0,
+      "addedAt": 1794211260000,
+      "lastOpenedAt": null,
+      "finishedAt": null
+    }
+  ]
+}

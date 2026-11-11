@@ -1,0 +1,77 @@
+/*
+ * Colours come from --titlebar-bg / --titlebar-fg so reader chrome can adopt the reading
+ * theme (UI-02); the defaults are the dark shell.
+ */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--titlebar-h);
+  padding-left: var(--space-2);
+  background: var(--titlebar-bg, var(--surface-0));
+  color: var(--titlebar-fg, var(--text-1));
+  /* hairline below the 40 px bar without eating into the caption buttons' height */
+  box-shadow: 0 1px 0 var(--titlebar-border, var(--border));
+  font: var(--fw-regular) var(--fs-body) / var(--lh-body) var(--font-ui);
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+.sidebar,
+.leading,
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+}
+
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--fw-strong);
+}
+
+.bar[data-inactive] .title {
+  opacity: 0.6;
+}
+
+.actions {
+  padding-right: var(--space-2);
+}
+
+.exitFullscreen {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--icon-button);
+  margin-right: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--titlebar-border, var(--border-strong));
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+  transition:
+    background-color var(--dur-hover) ease,
+    transform var(--dur-press) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .exitFullscreen:hover {
+    background: color-mix(in srgb, currentColor 10%, transparent);
+  }
+}
+.exitFullscreen:active {
+  transform: scale(var(--press-scale));
+}
+
+.kbd {
+  font: var(--fw-regular) var(--fs-caption) / var(--lh-caption) var(--font-ui);
+  opacity: 0.7;
+}

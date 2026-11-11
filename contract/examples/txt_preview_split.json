@@ -1,0 +1,13 @@
+{
+  "args": {
+    "bookId": "0123456789abcdef0123456789abcdef",
+    "chapterRegex": "^第.+回.*$",
+    "headingMaxChars": 40
+  },
+  "result": {
+    "count": 1,
+    "first20": [
+      "第一回"
+    ]
+  }
+}

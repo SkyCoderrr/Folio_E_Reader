@@ -1,0 +1,21 @@
+{
+  "args": {
+    "bookId": "0123456789abcdef0123456789abcdef"
+  },
+  "result": {
+    "bookId": "0123456789abcdef0123456789abcdef",
+    "encoding": "utf-8",
+    "detectedEncoding": "utf-8",
+    "lang": "zh-Hans",
+    "totalChars": 7,
+    "sections": [
+      {
+        "index": 0,
+        "title": "第一回",
+        "path": "C:\\EReaderTest\\cache\\txt\\0123456789abcdef0123456789abcdef\\0123456789abcdef\\s0001.html",
+        "startChar": 0,
+        "chars": 7
+      }
+    ]
+  }
+}

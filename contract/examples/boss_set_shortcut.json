@@ -1,0 +1,11 @@
+{
+  "args": {
+    "shortcut": "Ctrl+Alt+R"
+  },
+  "result": {
+    "enabled": false,
+    "shortcut": "Ctrl+Alt+R",
+    "registered": false,
+    "error": null
+  }
+}

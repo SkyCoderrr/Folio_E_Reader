@@ -1,0 +1,36 @@
+{
+  "args": {
+    "fromDay": "2026-11-10",
+    "toDay": "2026-11-11"
+  },
+  "result": {
+    "days": [
+      {
+        "day": "2026-11-10",
+        "activeMs": 300000,
+        "chars": 1500
+      },
+      {
+        "day": "2026-11-11",
+        "activeMs": 0,
+        "chars": 0
+      }
+    ],
+    "books": [
+      {
+        "bookId": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d",
+        "title": "Example book",
+        "activeMs": 300000,
+        "chars": 1500,
+        "progress": 0.2,
+        "lastReadAt": 1794269100000,
+        "charsPerMin": 300,
+        "finished": false
+      }
+    ],
+    "totals": {
+      "activeMs": 300000,
+      "chars": 1500
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "args": {},
+  "result": {
+    "version": 1,
+    "activePresetId": "custom.7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "presets": [
+      {
+        "id": "custom.7c9e6679-7425-40de-944b-e07fc1f90ae7",
+        "name": "Evening CJK",
+        "builtIn": false,
+        "style": {
+          "colors": { "background": "#17181B", "text": "#D6D1C7", "accent": "#D9A55B", "selection": "#D9A55B52" },
+          "font": { "latin": "Sitka Text", "cjk": "Microsoft YaHei", "fallback": "serif", "size": 22, "weight": 400 },
+          "text": { "lineHeight": 1.9, "letterSpacing": 0, "paragraphSpacing": 0.5, "indentMode": "force", "indentSize": 2, "align": "justify" },
+          "layout": { "marginX": 48, "marginY": 40, "maxLineWidthEm": 36, "pageGap": 48 },
+          "cjk": { "punctuationTrim": true, "autospace": true }
+        },
+        "updatedAt": 1794240000000
+      }
+    ],
+    "styleOverrides": { "font": { "size": 23 } },
+    "reader": { "flow": "scroll", "pagesPerView": 1 },
+    "layout": { "minSpreadWidthPx": 1000 },
+    "epub": { "styleOverride": "balanced" },
+    "chrome": { "autoHideDelayMs": 2000, "footerProgress": "off" },
+    "cursor": { "autoHideDelayMs": 1500 },
+    "scroll": {
+      "arrowSpeed": 720,
+      "startRampMs": 80,
+      "acceleration": true,
+      "accelMax": 2.5,
+      "accelRampMs": 800,
+      "stopDecelMs": 100,
+      "tapLines": 3,
+      "pageOverlapLines": 2
+    },
+    "autoscroll": { "speed": 40, "step": 10, "pauseOnBlur": true },
+    "txt": {
+      "chapterRegex": "^[ \\t　]*(?:第[0-9０-９零〇一二三四五六七八九十百千万两]+[章回节節卷集部篇](?:[ \\t　:：·.、-].*)?|卷[0-9０-９一二三四五六七八九十百千]+.*|(?:Chapter|CHAPTER)\\s+(?:\\d+|[IVXLCDM]+)\\b.*|序章|序言|楔子|引子|尾声|尾聲|后记|後記|番外.*)[ \\t　]*$",
+      "headingMaxChars": 40,
+      "fallbackChunkChars": 10000,
+      "paragraphMode": "auto"
+    },
+    "library": { "storageMode": "copy", "folder": null, "view": "grid", "sort": "lastRead", "sortDir": "desc", "filter": "all" },
+    "window": { "titleBar": "custom" },
+    "bossKey": { "enabled": false, "shortcut": "Ctrl+Alt+B" },
+    "stats": { "enabled": true, "idleTimeoutSec": 180 },
+    "keybindings": { "page.next": ["PageDown", "Space"] },
+    "ui": { "settingsLastPane": "general", "tocOpen": false }
+  }
+}

@@ -1,0 +1,91 @@
+.screen {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-0);
+  color: var(--text-1);
+}
+
+.content {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+}
+
+/* Elevated card: lighter surface + hairline + soft shadow (PRD 6.2). */
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(100%, 480px);
+  padding: var(--space-7) var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface-1);
+  box-shadow: var(--popover-shadow);
+  text-align: center;
+}
+
+.headline {
+  margin: 0;
+  font: var(--fw-strong) var(--fs-display) / var(--lh-display) var(--font-display);
+  letter-spacing: var(--tracking-display);
+  text-wrap: balance;
+}
+
+.body {
+  margin: var(--space-2) 0 var(--space-5);
+  color: var(--text-2);
+  font: var(--fw-regular) var(--fs-body) / var(--lh-body) var(--font-ui);
+}
+
+.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--control-h);
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: var(--fw-strong) var(--fs-body) / var(--lh-body) var(--font-ui);
+  cursor: default;
+  transition:
+    background-color var(--dur-hover) ease,
+    transform var(--dur-press) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .primary:hover {
+    background: color-mix(in srgb, var(--accent) 88%, white);
+  }
+}
+.primary:active {
+  transform: scale(var(--press-scale));
+}
+
+.kbd {
+  font: var(--fw-regular) var(--fs-caption) / var(--lh-caption) var(--font-ui);
+  opacity: 0.7;
+}
+
+/* Visually hidden but present in the DOM (the demo driver sets files on it). */
+.file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  opacity: 0;
+}
+
+.error {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--text-1);
+  font: var(--fw-regular) var(--fs-body) / var(--lh-body) var(--font-ui);
+}

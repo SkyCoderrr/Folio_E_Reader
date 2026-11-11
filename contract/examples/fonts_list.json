@@ -1,0 +1,8 @@
+{
+  "args": {},
+  "result": [
+    { "family": "Microsoft YaHei", "localizedFamilies": ["微软雅黑"], "cjk": true, "weights": [300, 400, 700] },
+    { "family": "Segoe UI", "localizedFamilies": [], "cjk": false, "weights": [300, 400, 600, 700, 900] },
+    { "family": "Sitka Text", "localizedFamilies": [], "cjk": false, "weights": [400, 700] }
+  ]
+}

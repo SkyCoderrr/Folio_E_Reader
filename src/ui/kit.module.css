@@ -1,0 +1,392 @@
+/* UI kit styles (PRD 6.5, 6.6). Tokens only. Never `transition: all`. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--control-h);
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-strong);
+  cursor: default;
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-hover) ease,
+    transform var(--dur-press) var(--ease-out);
+}
+.btn:active:not(:disabled) {
+  transform: scale(var(--press-scale));
+}
+.btn:disabled {
+  opacity: 0.4;
+}
+.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.secondary {
+  background: var(--surface-2);
+  color: var(--text-1);
+  border-color: var(--border-strong);
+}
+.ghost {
+  background: transparent;
+  color: var(--text-1);
+}
+.danger {
+  background: var(--danger);
+  color: var(--on-danger);
+}
+@media (hover: hover) and (pointer: fine) {
+  .primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 88%, var(--text-1));
+  }
+  .secondary:hover:not(:disabled),
+  .ghost:hover:not(:disabled) {
+    background: var(--active-tint);
+  }
+  .danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--danger) 88%, var(--text-1));
+  }
+}
+
+/* Fields */
+.label {
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.input {
+  height: var(--control-h);
+  width: 100%;
+  min-width: 0;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-0);
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+.input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.numGroup {
+  display: flex;
+  width: 72px;
+  flex: none;
+}
+
+/* Slider */
+.slider {
+  display: grid;
+  gap: var(--space-1);
+}
+.sliderControl {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  height: var(--control-h);
+  touch-action: none;
+  user-select: none;
+}
+.track {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-2);
+}
+.indicator {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-1);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.5);
+  transition: transform var(--dur-press) var(--ease-out);
+}
+.thumb:active {
+  transform: scale(1.1);
+}
+.sliderHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.resetSlot {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.resetDot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: default;
+  position: relative;
+}
+.resetDot::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+/* Switch */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  width: 40px;
+  height: 24px;
+  padding: 2px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition: background-color var(--dur-hover) ease;
+}
+.switch[data-checked] {
+  background: var(--accent);
+}
+.switchThumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text-1);
+  transition: transform var(--dur-panel-in) var(--ease-out);
+}
+.switch[data-checked] .switchThumb {
+  transform: translateX(16px);
+  background: var(--accent-ink);
+}
+.checkRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: var(--control-h);
+  font-size: var(--fs-body);
+}
+
+/* Segmented */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-0);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.seg {
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-body);
+  cursor: default;
+  transition: background-color var(--dur-hover) ease;
+}
+.seg[data-pressed] {
+  background: var(--accent-tint);
+  color: var(--text-1);
+}
+@media (hover: hover) and (pointer: fine) {
+  .seg:hover:not([data-pressed]) {
+    background: var(--hover-tint);
+  }
+}
+
+/* Floating surfaces (popover, menu, select) */
+.positioner {
+  z-index: 50;
+}
+.popup {
+  min-width: 160px;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  color: var(--text-1);
+  box-shadow: var(--popover-shadow);
+  font-size: var(--fs-body);
+  transform-origin: var(--transform-origin);
+  transition:
+    transform var(--dur-popover-in) var(--ease-out),
+    opacity var(--dur-popover-in) var(--ease-out);
+}
+.popup[data-starting-style],
+.popup[data-ending-style] {
+  opacity: 0;
+  transform: scale(var(--enter-scale));
+}
+.popup[data-ending-style] {
+  transition-duration: var(--dur-popover-out);
+}
+/* Command menus close at once (no fade-out): a selected command often swaps the whole screen
+   (Settings, Back to Library) and the fading popup would hang over the new view (t41u). */
+.menuPopup[data-ending-style] {
+  transition: none;
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--control-h);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  cursor: default;
+  user-select: none;
+}
+.item[data-highlighted] {
+  background: var(--active-tint);
+}
+.item[data-selected] {
+  color: var(--accent);
+}
+.itemDanger {
+  color: var(--danger);
+}
+.itemDanger[data-highlighted] {
+  background: var(--danger-tint);
+}
+.shortcut {
+  margin-left: auto;
+  padding-left: var(--space-6);
+  color: var(--text-3);
+  font-size: var(--fs-caption);
+}
+.sep {
+  height: 1px;
+  margin: var(--space-1) 0;
+  background: var(--border);
+}
+.selectTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 160px;
+  height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-0);
+  color: var(--text-1);
+  font-size: var(--fs-body);
+}
+
+/* Dialog */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--scrim);
+  transition: opacity var(--dur-dialog-in) var(--ease-out);
+}
+.backdrop[data-starting-style],
+.backdrop[data-ending-style] {
+  opacity: 0;
+}
+.dialog {
+  position: fixed;
+  z-index: 61;
+  top: 50%;
+  left: 50%;
+  width: min(420px, calc(100vw - var(--space-6)));
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface-1);
+  color: var(--text-1);
+  box-shadow: var(--popover-shadow);
+  transform: translate(-50%, -50%) scale(1);
+  transition:
+    transform var(--dur-dialog-in) var(--ease-out),
+    opacity var(--dur-dialog-in) var(--ease-out);
+}
+.dialog[data-starting-style],
+.dialog[data-ending-style] {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(var(--enter-scale));
+}
+.dialog[data-ending-style] {
+  transition-duration: var(--dur-dialog-out);
+}
+.dialogTitle {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: var(--fs-subtitle);
+  line-height: var(--lh-subtitle);
+  letter-spacing: var(--tracking-subtitle);
+  font-weight: var(--fw-strong);
+}
+.dialogDesc {
+  margin: 0 0 var(--space-5);
+  color: var(--text-2);
+  line-height: var(--lh-body);
+}
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* Tabs */
+.tabList {
+  position: relative;
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-body);
+  cursor: default;
+}
+.tab[data-active] {
+  color: var(--text-1);
+}
+.tabIndicator {
+  position: absolute;
+  left: var(--active-tab-left);
+  width: var(--active-tab-width);
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+  transition:
+    left var(--dur-panel-in) var(--ease-out),
+    width var(--dur-panel-in) var(--ease-out);
+}
+.tabPanel {
+  padding: var(--space-4) 0;
+}
+
+/* ColorField */
+.swatch {
+  width: var(--control-h);
+  height: var(--control-h);
+  flex: none;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+}

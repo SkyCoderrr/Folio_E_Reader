@@ -1,0 +1,14 @@
+{
+  "args": {
+    "key": "position:dev:a-tale-of-two-cities.epub:812340",
+    "value": {
+      "sectionIndex": 5,
+      "cfi": "epubcfi(/6/12!/4/2/14/1:118)",
+      "charOffset": 2140,
+      "globalCharOffset": null,
+      "progress": 0.1834,
+      "snippet": "It was the best of times, it was"
+    }
+  },
+  "result": null
+}

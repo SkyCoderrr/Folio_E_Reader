@@ -1,0 +1,295 @@
+/*
+ * Sits below the reader title bar (which stays up while the sidebar is open) and above the
+ * reveal strip. z-index 2 = the chrome layer; the chrome comes later in the DOM, so the bar
+ * and footer still paint over the sidebar's edges, never the other way round.
+ */
+.sidebar {
+  position: absolute;
+  inset-block: var(--titlebar-h) 0;
+  inset-inline-start: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-width);
+  background: var(--chrome-bg, var(--surface-1));
+  color: var(--chrome-text-2, var(--text-2));
+  border-inline-end: 1px solid var(--chrome-border, var(--border));
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  opacity: 0;
+  visibility: hidden;
+  /* slides from its own (left) edge */
+  transform: translateX(-100%);
+}
+/* push mode (>= 1280 px): the host shifts the text column; no floating shadow */
+.sidebar[data-mode='overlay'][data-open='true'] {
+  box-shadow: var(--popover-shadow);
+}
+.sidebar[data-open='true'] {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+.sidebar[data-animate='true'] {
+  transition:
+    opacity 150ms var(--ease-out),
+    transform 150ms var(--ease-out),
+    visibility 0s linear 150ms;
+}
+.sidebar[data-animate='true'][data-open='true'] {
+  transition:
+    opacity 200ms var(--ease-out),
+    transform 200ms var(--ease-out),
+    visibility 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .sidebar[data-open='true'] {
+    transform: none;
+  }
+  .sidebar[data-animate='true'],
+  .sidebar[data-animate='true'][data-open='true'] {
+    transition:
+      opacity 150ms linear,
+      visibility 0s linear 150ms;
+  }
+  .sidebar[data-animate='true'][data-open='true'] {
+    transition:
+      opacity 150ms linear,
+      visibility 0s;
+  }
+}
+
+.tabs {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-4) 0;
+  border-block-end: 1px solid var(--chrome-border, var(--border));
+}
+.tab {
+  height: 36px;
+  padding: 0 var(--space-1);
+  border: 0;
+  border-block-end: 2px solid transparent;
+  background: none;
+  color: var(--chrome-text-2, var(--text-2));
+  font: inherit;
+  cursor: default;
+  transition: color 120ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .tab:hover {
+    color: var(--chrome-text-1, var(--text-1));
+  }
+}
+.tab[aria-selected='true'] {
+  color: var(--chrome-text-1, var(--text-1));
+  font-weight: var(--fw-strong);
+  border-block-end-color: var(--accent);
+}
+.tab:focus-visible,
+.item:focus-visible,
+.bmMain:focus-visible,
+.bmDelete:focus-visible {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: var(--focus-offset);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* bottom: clear the 28 px reader footer that overlays the sidebar's foot */
+  padding: var(--space-2) 0 calc(28px + var(--space-3));
+  /* thin, theme-tinted thumb (works on light and sepia presets too) */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--chrome-text-2, var(--text-2)) 30%, transparent)
+    transparent;
+}
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-height: 32px;
+  margin-inline: var(--space-2);
+  padding-inline-end: var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-1); /* t28u: never-visited chapters at full emphasis */
+  line-height: var(--lh-body);
+  cursor: default;
+  user-select: none;
+}
+.item[data-current='true'] {
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: var(--fw-strong);
+}
+/* t28u: visited chapters are clearly dimmer (~47% of the unread luminance, >= 3:1 on the sidebar) */
+.item[data-read='true'] {
+  color: var(--toc-read);
+}
+.dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-block-start: 13px;
+  margin-inline-end: -2px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.pct {
+  flex: none;
+  margin-inline-start: auto;
+  padding-block: 6px;
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.item[data-current='true'] .label {
+  flex: 0 1 auto;
+}
+@media (hover: hover) and (pointer: fine) {
+  .item:hover:not([data-current='true']) {
+    background: var(--hover-tint);
+  }
+}
+.chevron,
+.chevronGap {
+  flex: none;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  margin-block-start: 8px;
+  color: var(--chrome-text-3, var(--text-3));
+}
+/* Long Gutenberg labels ("I hope Mr. Bingley will like it. CHAPTER II.") clamp to 2 lines. */
+.label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  min-width: 0;
+  padding-block: 6px;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+}
+.emptyTitle {
+  margin: 0 0 var(--space-1);
+  color: var(--chrome-text-1, var(--text-1));
+  font-weight: var(--fw-strong);
+}
+.emptyHint {
+  margin: 0;
+  color: var(--chrome-text-3, var(--text-3));
+}
+
+.bmList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bmRow {
+  position: relative;
+  margin-inline: var(--space-2);
+}
+.bmMain {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.bmHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.bmLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--chrome-text-1, var(--text-1));
+  font-weight: var(--fw-strong);
+}
+.bmPct {
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
+  color: var(--chrome-text-3, var(--text-3));
+}
+.bmExcerpt {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.bmDate {
+  font-size: var(--fs-caption);
+  color: var(--chrome-text-3, var(--text-3));
+}
+.bmDelete {
+  position: absolute;
+  inset-block-start: var(--space-1);
+  inset-inline-end: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--chrome-bg, var(--surface-1));
+  color: var(--chrome-text-2, var(--text-2));
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.bmRow:focus-within .bmDelete {
+  opacity: 1;
+}
+@media (hover: hover) and (pointer: fine) {
+  .bmRow:hover .bmDelete {
+    opacity: 1;
+  }
+  .bmRow:hover .bmMain {
+    background: var(--hover-tint);
+  }
+}
+@media (hover: none) {
+  .bmDelete {
+    opacity: 1;
+  }
+}
+
+.mark {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+.mark:focus-visible {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: var(--focus-offset);
+}

@@ -1,0 +1,11 @@
+{
+  "args": {},
+  "result": {
+    "maximized": false,
+    "minimized": false,
+    "fullscreen": false,
+    "focused": true,
+    "visible": true,
+    "scaleFactor": 1.5
+  }
+}

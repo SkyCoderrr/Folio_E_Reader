@@ -1,0 +1,15 @@
+{
+  "args": {
+    "bookId": "0123456789abcdef0123456789abcdef",
+    "patch": {
+      "paragraphMode": "blank"
+    }
+  },
+  "result": {
+    "encoding": "auto",
+    "detectedEncoding": null,
+    "chapterRegex": null,
+    "headingMaxChars": null,
+    "paragraphMode": "blank"
+  }
+}

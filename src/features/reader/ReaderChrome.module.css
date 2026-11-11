@@ -1,0 +1,211 @@
+/*
+ * Reader frame. --reader-bg / --reader-fg default to the Dark preset (PRD 6.3). Only the reading
+ * surface and its footer follow the preset; every other chrome stays in the dark app theme
+ * (UI-02, 2026-11-10). The reading surface is always solid; chrome overlays and never reflows it.
+ */
+.frame {
+  --reader-bg: var(--preset-dark-bg);
+  --reader-fg: var(--preset-dark-text);
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--reader-bg);
+  color: var(--reader-fg);
+}
+
+.reading {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--reader-bg);
+  color: var(--reader-fg);
+}
+
+/* Reveal zone: the top 56 px (height set inline from REVEAL_ZONE_PX). */
+.revealStrip {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 1;
+}
+
+.chrome {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.top,
+.footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  opacity: 0;
+  visibility: hidden;
+  /* hide: 150 ms ease, then drop out of hit-testing */
+  transition:
+    opacity var(--dur-chrome-hide) ease,
+    visibility 0s linear var(--dur-chrome-hide);
+}
+
+.top {
+  top: 0;
+}
+
+.footer {
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  height: 28px;
+  padding: 0 var(--space-4);
+  background: var(--chrome-bg);
+  color: var(--chrome-text-2);
+  box-shadow: 0 -1px 0 var(--chrome-border);
+  /* The footer sits inside the reading area, so it follows the preset (UI-02, 2026-11-10);
+     ReaderChrome sets contrast-checked values inline, these are the fallback. */
+  --chrome-bg: color-mix(in srgb, var(--reader-bg) 94%, var(--reader-fg));
+  --chrome-text-2: color-mix(in srgb, var(--reader-fg) 72%, var(--reader-bg));
+  --chrome-border: color-mix(in srgb, var(--reader-fg) 14%, transparent);
+  font: var(--fw-regular) var(--fs-caption) / var(--lh-caption) var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.chrome[data-visible='true'] .top,
+.chrome[data-visible='true'] .footer {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  /* show: 100 ms */
+  transition:
+    opacity var(--dur-chrome-show) ease,
+    visibility 0s linear 0s;
+}
+
+/* The keyboard pin reveals immediately (PRD 6.6). */
+.frame[data-pinned='true'] .top,
+.frame[data-pinned='true'] .footer {
+  transition: none;
+}
+
+/* t31u: text-only progress readout in the page's bottom-right corner (the right page in two-page). No background, border, height or
+   hit-testing; it fades out while the footer bar is showing (the bar carries the same numbers). */
+.readout {
+  position: absolute;
+  right: var(--space-4); /* same inset as the footer bar's text, so the two line up when it shows */
+  bottom: 10px;
+  text-align: right;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  color: var(--chrome-text-2, color-mix(in srgb, var(--reader-fg) 72%, var(--reader-bg)));
+  font: var(--fw-regular) var(--fs-caption) / var(--lh-caption) var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  /* Scroll flow runs book text under the readout: a halo in the page colour keeps the digits legible
+     without a fill or a bar (it only covers the few pixels around the glyphs). */
+  text-shadow:
+    0 0 2px var(--reader-bg),
+    0 0 3px var(--reader-bg),
+    0 0 5px var(--reader-bg),
+    0 0 8px var(--reader-bg);
+  opacity: 1;
+  transition: opacity var(--dur-chrome-hide) ease;
+}
+
+.chrome[data-visible='true'] .readout {
+  opacity: 0;
+  transition: opacity var(--dur-chrome-show) ease;
+}
+
+/* Top bar: title, then the chapter in secondary text */
+.titleText {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.titleBook {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.titleChapter {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+  font-weight: var(--fw-regular);
+}
+.titleChapter::before {
+  content: '\203A';
+  margin-right: var(--space-2);
+}
+
+/* Bar buttons (Layout, More): currentColor tints like IconButton, so they suit any theme */
+.textButton,
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--icon-button);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+  transition:
+    background-color var(--dur-hover) ease,
+    transform var(--dur-press) var(--ease-out);
+}
+.textButton {
+  gap: var(--space-1);
+  padding: 0 var(--space-2) 0 var(--space-3);
+}
+.iconButton {
+  width: var(--icon-button);
+}
+@media (hover: hover) and (pointer: fine) {
+  .textButton:hover,
+  .iconButton:hover {
+    background: color-mix(in srgb, currentColor 10%, transparent);
+  }
+}
+.textButton[data-popup-open],
+.iconButton[data-popup-open] {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.textButton:active,
+.iconButton:active {
+  transform: scale(var(--press-scale));
+}
+.chevron {
+  opacity: 0.7;
+}
+
+/* Layout popover */
+.layoutPop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 220px;
+}
+.layoutHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-2);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-weight: var(--fw-strong);
+}
+.kbd {
+  color: var(--text-3);
+  font: var(--fw-regular) var(--fs-caption) / var(--lh-caption) var(--font-ui);
+}

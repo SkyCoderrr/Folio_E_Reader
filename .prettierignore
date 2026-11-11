@@ -1,0 +1,8 @@
+vendor/
+contract/
+tmp/
+src-tauri/target/
+node_modules/
+package-lock.json
+dist/
+.test-profile/

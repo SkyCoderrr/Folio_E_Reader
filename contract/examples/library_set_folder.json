@@ -1,0 +1,11 @@
+{
+  "args": {
+    "path": "D:\\Books",
+    "moveFiles": true
+  },
+  "result": {
+    "libraryDir": "D:\\Books",
+    "moved": 2,
+    "failed": []
+  }
+}

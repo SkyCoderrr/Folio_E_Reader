@@ -1,0 +1,11 @@
+{
+  "args": {
+    "enabled": true
+  },
+  "result": {
+    "enabled": true,
+    "shortcut": "Ctrl+Alt+B",
+    "registered": true,
+    "error": null
+  }
+}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" shape-rendering="geometricPrecision">
+  <!-- 24 px hand-tuned variant (Windows taskbar at 100 % scale). Same mark as icon.svg, edges on whole pixels. -->
+  <rect x="0" y="0" width="24" height="24" rx="5" fill="#141518"/>
+  <rect x="0.5" y="0.5" width="23" height="23" rx="4.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="1"/>
+  <path d="M5 6 L11 7.5 L11 18 L5 16.5 Z" fill="#F2B366"/>
+  <path d="M13 7.5 L19 6 L19 16.5 L13 18 Z" fill="#DA924A"/>
+</svg>

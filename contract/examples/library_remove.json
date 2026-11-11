@@ -1,0 +1,9 @@
+{
+  "args": {
+    "bookIds": ["9b1e47c2a0d35f8e6c7b2a1d0e9f8a7b", "00000000000000000000000000000000"]
+  },
+  "result": {
+    "removedIds": ["9b1e47c2a0d35f8e6c7b2a1d0e9f8a7b"],
+    "fileErrors": []
+  }
+}

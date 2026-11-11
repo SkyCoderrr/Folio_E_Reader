@@ -1,0 +1,23 @@
+{
+  "args": {
+    "bookId": "0123456789abcdef0123456789abcdef"
+  },
+  "result": [
+    {
+      "id": "42",
+      "bookId": "0123456789abcdef0123456789abcdef",
+      "locator": {
+        "sectionIndex": 0,
+        "cfi": null,
+        "charOffset": 0,
+        "globalCharOffset": 0,
+        "progress": 0,
+        "snippet": "第一回"
+      },
+      "progress": 0,
+      "chapterTitle": "第一回",
+      "snippet": "第一回",
+      "createdAt": 1794268800000
+    }
+  ]
+}

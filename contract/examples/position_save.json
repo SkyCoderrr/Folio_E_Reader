@@ -1,0 +1,14 @@
+{
+  "args": {
+    "bookId": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d",
+    "locator": {
+      "sectionIndex": 6,
+      "cfi": "epubcfi(/6/14!/4/2/8/1:0)",
+      "charOffset": 310,
+      "globalCharOffset": null,
+      "progress": 0.2011,
+      "snippet": "The Mail Coach. It was the Dover"
+    }
+  },
+  "result": null
+}

@@ -1,0 +1,26 @@
+.btn {
+  display: inline-grid;
+  place-items: center;
+  width: var(--icon-button);
+  height: var(--icon-button);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  cursor: default;
+  transition:
+    background-color var(--dur-hover) ease,
+    transform var(--dur-press) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover {
+    background: color-mix(in srgb, currentColor 10%, transparent);
+  }
+}
+
+.btn:active {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  transform: scale(var(--press-scale));
+}

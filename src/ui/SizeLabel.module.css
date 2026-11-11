@@ -1,0 +1,25 @@
+/* Opacity only: no transform, so reduced motion needs no override (<= 150 ms fade). */
+.label {
+  position: absolute;
+  inset-block-start: calc(var(--titlebar-h) + var(--space-4));
+  inset-inline: 0;
+  margin-inline: auto;
+  width: max-content;
+  z-index: 3;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--chrome-bg, var(--surface-2));
+  color: var(--chrome-text-1, var(--text-1));
+  border: 1px solid var(--chrome-border, var(--border-strong));
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-chrome-hide) linear;
+}
+.label[data-visible='true'] {
+  opacity: 1;
+  transition-duration: var(--dur-chrome-show);
+}

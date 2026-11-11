@@ -1,0 +1,11 @@
+{
+  "args": { "bookId": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d" },
+  "result": {
+    "sectionIndex": 5,
+    "cfi": "epubcfi(/6/12!/4/2/14/1:118)",
+    "charOffset": 2140,
+    "globalCharOffset": null,
+    "progress": 0.1834,
+    "snippet": "It was the best of times, it was"
+  }
+}

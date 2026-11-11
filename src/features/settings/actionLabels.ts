@@ -1,0 +1,41 @@
+import type { ActionId } from '@contract/types';
+
+/** Sentence-case names for the Keyboard settings pane (one per contract ActionId). */
+export const ACTION_LABELS: Record<ActionId, string> = {
+  'scroll.down': 'Scroll down',
+  'scroll.up': 'Scroll up',
+  'page.next': 'Next page',
+  'page.prev': 'Previous page',
+  'chapter.start': 'Start of chapter',
+  'chapter.end': 'End of chapter',
+  'book.start': 'Start of book',
+  'book.end': 'End of book',
+  'toc.toggle': 'Show or hide contents',
+  'bookmarks.show': 'Show bookmarks',
+  'bookmark.toggle': 'Add or remove bookmark',
+  'appearance.toggle': 'Appearance panel',
+  'chrome.toggle': 'Keep toolbar visible',
+  'fullscreen.toggle': 'Full screen',
+  'font.increase': 'Larger text',
+  'font.decrease': 'Smaller text',
+  'font.reset': 'Default text size',
+  'layout.toggleFlow': 'Switch scroll and paged',
+  'layout.togglePages': 'Switch one and two pages',
+  'autoscroll.toggle': 'Start or stop auto-scroll',
+  'book.close': 'Back to library',
+  dismiss: 'Close panel or menu',
+  'autoscroll.pause': 'Pause or resume',
+  'autoscroll.faster': 'Faster',
+  'autoscroll.slower': 'Slower',
+  'library.import': 'Add books',
+  'library.search': 'Search',
+  'library.viewGrid': 'Grid view',
+  'library.viewList': 'List view',
+  'library.open': 'Open book',
+  'library.remove': 'Remove books',
+  'library.selectAll': 'Select all',
+  'settings.open': 'Open settings',
+  'app.quit': 'Quit',
+};
+
+export const actionLabel = (id: ActionId): string => ACTION_LABELS[id] ?? id;

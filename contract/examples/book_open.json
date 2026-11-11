@@ -1,0 +1,31 @@
+{
+  "args": { "bookId": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d" },
+  "result": {
+    "book": {
+      "id": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d",
+      "format": "epub",
+      "title": "A Tale of Two Cities",
+      "author": "Charles Dickens",
+      "language": "en",
+      "fileName": "a-tale-of-two-cities.epub",
+      "filePath": "C:\\Users\\dany\\AppData\\Local\\Temp\\e_reader_test\\run-01\\library\\3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d.epub",
+      "fileSize": 812340,
+      "fileMissing": false,
+      "coverPath": "C:\\Users\\dany\\AppData\\Local\\Temp\\e_reader_test\\run-01\\library\\covers\\3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d.jpg",
+      "totalChars": null,
+      "progress": 0.1834,
+      "addedAt": 1794211200000,
+      "lastOpenedAt": 1794240000000,
+      "finishedAt": null
+    },
+    "locator": {
+      "sectionIndex": 5,
+      "cfi": "epubcfi(/6/12!/4/2/14/1:118)",
+      "charOffset": 2140,
+      "globalCharOffset": null,
+      "progress": 0.1834,
+      "snippet": "It was the best of times, it was"
+    },
+    "txtPrefs": null
+  }
+}

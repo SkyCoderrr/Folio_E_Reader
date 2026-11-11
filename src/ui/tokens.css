@@ -1,0 +1,114 @@
+/*
+ * App-shell design tokens (PRD 6.2 - 6.6). This is the only file that may contain hex values.
+ * Dark-only shell: `color-scheme: dark`. The reading surface is always solid.
+ */
+:root {
+  color-scheme: dark;
+
+  /* 6.2 Colour */
+  --surface-0: #111214;
+  --surface-1: #18191c;
+  --surface-2: #222327;
+  --border: rgb(255 255 255 / 0.08);
+  --border-strong: rgb(255 255 255 / 0.14);
+  --text-1: #eceae6;
+  --text-2: #a3a09a;
+  --text-3: #807d77;
+  --toc-read: #a8a59f; /* visited TOC chapters: ~47% of --text-1 luminance (t28u) */
+  --accent: #d9a55b;
+  --accent-tint: rgb(217 165 91 / 0.18);
+  --accent-ink: #1a1408;
+  --hover-tint: rgb(255 255 255 / 0.06);
+  --active-tint: rgb(255 255 255 / 0.1);
+  --danger-tint: rgb(229 72 77 / 0.16);
+  --scrim: rgb(0 0 0 / 0.5);
+  --scrollbar-thumb: rgb(255 255 255 / 0.14);
+  --danger: #e5484d;
+  --on-danger: #ffffff;
+  --caption-close: #c42b1c;
+  --caption-close-pressed: rgb(196 43 28 / 0.8);
+
+  /* 6.3 Dark reading preset (default reader surface; reader chrome adopts the active preset) */
+  --preset-dark-bg: #17181b;
+  --preset-dark-text: #d6d1c7;
+  --preset-dark-accent: #d9a55b;
+
+  /* 6.4 Typography */
+  --font-ui: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', system-ui, sans-serif;
+  --font-display:
+    'Segoe UI Variable Display', 'Segoe UI', 'Microsoft YaHei UI', system-ui, sans-serif;
+
+  --fs-caption: 12px;
+  --lh-caption: 16px;
+  --fs-body: 14px;
+  --lh-body: 20px;
+  --fs-subtitle: 18px;
+  --lh-subtitle: 24px;
+  --fs-title: 24px;
+  --lh-title: 32px;
+  --fs-display: 32px;
+  --lh-display: 40px;
+  --fw-regular: 400;
+  --fw-strong: 600;
+  --tracking-subtitle: -0.01em;
+  --tracking-title: -0.015em;
+  --tracking-display: -0.02em;
+
+  /* 6.5 Spacing, shape, controls */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  --control-h: 32px;
+  --icon-button: 32px;
+  --icon-button-dense: 28px;
+  --caption-w: 46px;
+  --titlebar-h: 40px;
+  --panel-width: 360px; /* Appearance panel; the reader shifts the text column by it at >= 1280 px */
+  --sidebar-width: 300px; /* TOC/bookmarks sidebar (NAV-02.1) */
+  --focus-ring: 2px;
+  --focus-offset: 2px;
+  --popover-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
+
+  /* 6.6 Motion */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-hover: 120ms;
+  --dur-press: 120ms;
+  --dur-chrome-show: 100ms;
+  --dur-chrome-hide: 150ms;
+  --dur-tooltip: 125ms;
+  --dur-panel-in: 200ms;
+  --dur-panel-out: 150ms;
+  --press-scale: 0.97;
+  --enter-scale: 0.97;
+  --dur-popover-in: 150ms;
+  --dur-popover-out: 100ms;
+  --dur-dialog-in: 200ms;
+  --dur-dialog-out: 150ms;
+}
+
+/* Windows "Animation effects" off: no transforms; only opacity fades, all <= 150 ms (UI-06.1). */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --press-scale: 1;
+    --enter-scale: 1;
+    --dur-panel-in: 150ms;
+    --dur-dialog-in: 150ms;
+  }
+}
+
+/* 6.9 Focus: 2 px accent ring, 2 px offset. */
+:focus-visible {
+  outline: var(--focus-ring) solid var(--accent);
+  outline-offset: var(--focus-offset);
+}

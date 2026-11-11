@@ -1,0 +1,10 @@
+{
+  "args": {
+    "rects": {
+      "minimize": { "x": 1142, "y": 0, "width": 46, "height": 40 },
+      "maximize": { "x": 1188, "y": 0, "width": 46, "height": 40 },
+      "close": { "x": 1234, "y": 0, "width": 46, "height": 40 }
+    }
+  },
+  "result": null
+}

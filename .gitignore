@@ -1,0 +1,43 @@
+# Dependencies and build output
+node_modules/
+dist/
+dist-ssr/
+target/
+src-tauri/target/
+src-tauri/gen/
+*.tsbuildinfo
+coverage/
+
+# Test profiles and scratch data (never commit user or test data)
+.test-profile*/
+test-profile*/
+tmp/
+.tmp/
+*.log
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.local
+.env
+.env.*
+
+# Agent transcripts and one-off probe/verification scripts (kept locally, not published)
+.agent-logs/
+docs/*_log.txt
+scripts/pm-*
+scripts/fb[0-9]*
+scripts/opus*
+scripts/claude[0-9]*
+scripts/ui-fix-*
+scripts/repro-*
+scripts/demo-run*
+scripts/probe-*
+
+# Stray measurement output folders
+/after/
+/after-v2/
+/before/

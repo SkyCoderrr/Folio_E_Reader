@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- E_Reader app icon, master (32/48/64/128/256 px and up).
+       Grid: 8 units = 1 px at 32 px, so every straight edge lands on whole pixels at 32/64/128/256.
+       Mark: an open two-page spread; both pages dip toward the spine. No letters (name not final). -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1A1B1F"/>
+      <stop offset="1" stop-color="#0E0F11"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#tile)"/>
+  <rect x="10" y="10" width="236" height="236" rx="50" fill="none" stroke="#FFFFFF" stroke-opacity="0.09" stroke-width="4"/>
+  <!-- Polygons are inset 4 units and stroked 8 units with round joins: outer edges stay on the grid,
+       only the corners soften. -->
+  <g stroke-linejoin="round" stroke-width="8">
+    <path d="M60 76 L116 90 L116 180 L60 166 Z" fill="#F2B366" stroke="#F2B366"/>
+    <path d="M140 90 L196 76 L196 166 L140 180 Z" fill="#DA924A" stroke="#DA924A"/>
+  </g>
+</svg>

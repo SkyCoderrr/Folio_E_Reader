@@ -1,0 +1,63 @@
+.group {
+  display: flex;
+  height: var(--titlebar-h);
+  flex: none;
+}
+
+.btn {
+  display: grid;
+  place-items: center;
+  width: var(--caption-w);
+  height: var(--titlebar-h);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  cursor: default;
+  transition: background-color var(--dur-hover) ease;
+}
+
+.group[data-inactive] .btn {
+  color: var(--text-3);
+}
+
+/* Native overlay painting ([data-hover]/[data-pressed]) and the webview fallback (:hover). */
+.btn[data-hover] {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.btn[data-pressed] {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover {
+    background: color-mix(in srgb, currentColor 10%, transparent);
+  }
+}
+.btn:active {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.close[data-hover] {
+  background: var(--caption-close);
+  color: var(--on-danger);
+}
+.close[data-pressed] {
+  background: var(--caption-close-pressed);
+  color: var(--on-danger);
+}
+@media (hover: hover) and (pointer: fine) {
+  .close:hover {
+    background: var(--caption-close);
+    color: var(--on-danger);
+  }
+}
+.close:active {
+  background: var(--caption-close-pressed);
+  color: var(--on-danger);
+}
+
+/* Square focus ring inside the button so it is not clipped by the window edge. */
+.btn:focus-visible {
+  outline-offset: calc(var(--focus-ring) * -1);
+}

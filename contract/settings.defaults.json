@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "activePresetId": "builtin.dark",
+  "presets": [],
+  "styleOverrides": {},
+  "reader": { "flow": "scroll", "pagesPerView": 1 },
+  "layout": { "minSpreadWidthPx": 1000 },
+  "epub": { "styleOverride": "balanced" },
+  "chrome": { "autoHideDelayMs": 2000, "footerProgress": "off" },
+  "cursor": { "autoHideDelayMs": 1500 },
+  "scroll": {
+    "arrowSpeed": 720,
+    "startRampMs": 80,
+    "acceleration": true,
+    "accelMax": 2.5,
+    "accelRampMs": 800,
+    "stopDecelMs": 100,
+    "tapLines": 3,
+    "pageOverlapLines": 2
+  },
+  "autoscroll": { "speed": 40, "step": 10, "pauseOnBlur": true },
+  "txt": {
+    "chapterRegex": "^[ \\t　]*(?:第[0-9０-９零〇一二三四五六七八九十百千万两]+[章回节節卷集部篇](?:[ \\t　:：·.、-].*)?|卷[0-9０-９一二三四五六七八九十百千]+.*|(?:Chapter|CHAPTER)\\s+(?:\\d+|[IVXLCDM]+)\\b.*|序章|序言|楔子|引子|尾声|尾聲|后记|後記|番外.*)[ \\t　]*$",
+    "headingMaxChars": 40,
+    "fallbackChunkChars": 10000,
+    "paragraphMode": "auto"
+  },
+  "library": {
+    "storageMode": "copy",
+    "folder": null,
+    "view": "grid",
+    "sort": "lastRead",
+    "sortDir": "desc",
+    "filter": "all"
+  },
+  "window": { "titleBar": "custom" },
+  "bossKey": { "enabled": true, "shortcut": "Ctrl+Alt+B" },
+  "stats": { "enabled": true, "idleTimeoutSec": 180 },
+  "keybindings": {},
+  "ui": { "settingsLastPane": "general", "tocOpen": false }
+}
