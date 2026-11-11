@@ -47,15 +47,12 @@ $env:E_READER_PROFILE_DIR="$PWD\.test-profile\manual"
 .\src-tauri\target\release\e-reader.exe
 ```
 
-See [docs/INSTALL.md](docs/INSTALL.md) for the installer, and [docs/PRD.md](docs/PRD.md) for the product spec.
-
 ## Project layout
 
 ```
 src/         React UI (reader, library, settings)
 src-tauri/   Rust backend (window, library, import, SQLite)
 contract/    Shared frontend/backend contract
-docs/        PRD, user stories, decisions (ADRs)
 tests/       Fixtures
 vendor/      foliate-js (git submodule)
 ```

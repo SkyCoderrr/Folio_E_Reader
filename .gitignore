@@ -41,3 +41,6 @@ scripts/probe-*
 /after/
 /after-v2/
 /before/
+
+# Project docs (PRD, ADRs, screenshots) kept locally, not published
+/docs/
