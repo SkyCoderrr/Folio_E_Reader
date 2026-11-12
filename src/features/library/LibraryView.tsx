@@ -8,6 +8,7 @@ import type { MenuEntry } from '../../ui/Menu';
 import { IconButton } from '../../ui/IconButton';
 import { useSettings } from '../../state/settingsStore';
 import { installKeyRouter } from '../../engine/input/keyRouter';
+import { overlays } from '../../state/overlayStore';
 import { effectiveKeymap, eventChord } from '../../engine/input/keymap';
 import { TitleBar } from '../../ui/TitleBar';
 import { BookCover } from './BookCover';
@@ -187,10 +188,7 @@ export function LibraryView(props: LibraryViewProps) {
   useEffect(
     () =>
       installKeyRouter(window, {
-        scopes: () =>
-          document.querySelector('[data-settings-screen], [role="dialog"], [role="alertdialog"]')
-            ? []
-            : ['library'],
+        scopes: () => (overlays.any() ? [] : ['library']), // #13: Settings, dialogs, menus own the keys
         bindings: () => useSettings.getState().settings.keybindings,
         handle: (action, phase) => {
           if (phase === 'up') return true;
@@ -549,7 +547,10 @@ export function LibraryView(props: LibraryViewProps) {
             }}
           >
             {shown.length === 0 ? (
-              <p className={styles.noMatch}>No books match.</p>
+              <div className={styles.noMatch}>
+                <p>{query ? `No books match '${query}'` : 'No books match.'}</p>
+                {query ? <Button onClick={() => onQueryChange('')}>Clear Search</Button> : null}
+              </div>
             ) : view === 'grid' ? (
               <div ref={gridRef} className={styles.grid}>
                 {shown.map((b) => (

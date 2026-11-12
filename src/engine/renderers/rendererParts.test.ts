@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { BookSource } from '../../book/BookSource';
-import { PinSet, RendererEmitter, resolveLink } from './gridParts';
+import type { BookSource } from '../book/BookSource';
+import { PinSet, RendererEmitter, resolveLink } from './rendererParts';
 
 describe('PinSet', () => {
   it('keeps a section pinned until every overlapping navigation released it', () => {

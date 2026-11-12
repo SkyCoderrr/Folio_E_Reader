@@ -2,6 +2,52 @@ use super::*;
 use chrono::{Datelike, Local, NaiveDate, TimeZone};
 use rusqlite::{OptionalExtension, params};
 
+#[derive(Default, Clone)]
+struct SpeedWindow {
+    used: u64,
+    chars: f64,
+}
+impl SpeedWindow {
+    fn push(&mut self, active: u64, chars: u64) {
+        if active > 0 && self.used < 1_800_000 {
+            let take = active.min(1_800_000 - self.used);
+            self.chars += chars as f64 * take as f64 / active as f64;
+            self.used += take;
+        }
+    }
+    fn speed(&self, active: u64) -> Option<f64> {
+        (active >= 300_000 && self.used > 0).then(|| self.chars * 60_000.0 / self.used as f64)
+    }
+}
+pub(super) fn book_seed(c: &Connection, id: &str) -> Result<BookStatsSeed, AppError> {
+    let (active, chars): (i64, i64) = c.query_row(
+        "SELECT coalesce(sum(active_ms),0),coalesce(sum(chars_advanced),0) FROM sessions WHERE book_id=?1",
+        [id], |r| Ok((r.get(0)?, r.get(1)?)),
+    ).map_err(db_error)?;
+    let active = u64::try_from(active).map_err(db_error)?;
+    let chars = u64::try_from(chars).map_err(db_error)?;
+    if active > SAFE_INTEGER || chars > SAFE_INTEGER {
+        return Err(db_error("Unsafe stats total"));
+    }
+    let mut stmt = c.prepare("SELECT active_ms,chars_advanced FROM sessions WHERE book_id=?1 ORDER BY ended_at DESC,id DESC").map_err(db_error)?;
+    let mut rows = stmt.query([id]).map_err(db_error)?;
+    let mut window = SpeedWindow::default();
+    while window.used < 1_800_000 {
+        let Some(r) = rows.next().map_err(db_error)? else {
+            break;
+        };
+        window.push(
+            u64::try_from(r.get::<_, i64>(0).map_err(db_error)?).map_err(db_error)?,
+            u64::try_from(r.get::<_, i64>(1).map_err(db_error)?).map_err(db_error)?,
+        );
+    }
+    Ok(BookStatsSeed {
+        active_ms: active,
+        chars,
+        chars_per_min: window.speed(active),
+    })
+}
+
 fn date(value: &str, field: &str) -> Result<NaiveDate, AppError> {
     let day = NaiveDate::parse_from_str(value, "%Y-%m-%d")
         .map_err(|_| invalid(field, "Expected YYYY-MM-DD"))?;
@@ -166,7 +212,7 @@ impl Database {
             })).map_err(db_error)?.collect::<Result<Vec<_>,_>>().map_err(db_error)?;
             let mut stmt = tx.prepare("SELECT book_id,local_day,ended_at,active_ms,chars_advanced FROM sessions WHERE local_day BETWEEN ?1 AND ?2 ORDER BY ended_at DESC,id DESC").map_err(db_error)?;
             let mut rows = stmt.query([from,to]).map_err(db_error)?;
-            let mut windows = vec![(0u64,0.0); books.len()];
+            let mut windows = vec![SpeedWindow::default(); books.len()];
             while let Some(r) = rows.next().map_err(db_error)? {
                 let id: String = r.get(0).map_err(db_error)?;
                 let day: String = r.get(1).map_err(db_error)?;
@@ -180,15 +226,10 @@ impl Database {
                 let offset = (date(&day,"local_day").map_err(db_error)? - first).num_days() as usize;
                 let entry = days.get_mut(offset).ok_or_else(|| db_error("Invalid stored day"))?;
                 add(&mut entry.active_ms,active)?; add(&mut entry.chars,chars)?;
-                let (used, advanced) = &mut windows[index];
-                if active > 0 && *used < 1_800_000 {
-                    let take = active.min(1_800_000 - *used);
-                    *advanced += chars as f64 * take as f64 / active as f64;
-                    *used += take;
-                }
+                windows[index].push(active, chars);
             }
-            for (book,(used,chars)) in books.iter_mut().zip(windows) {
-                if book.active_ms >= 300_000 { book.chars_per_min = Some(chars * 60_000.0 / used as f64); }
+            for (book,window) in books.iter_mut().zip(windows) {
+                book.chars_per_min = window.speed(book.active_ms);
             }
             let mut totals = StatsTotals { active_ms: 0, chars: 0 };
             for day in &days { add(&mut totals.active_ms,day.active_ms)?; add(&mut totals.chars,day.chars)?; }

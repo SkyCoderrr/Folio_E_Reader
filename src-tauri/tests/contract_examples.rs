@@ -317,3 +317,12 @@ fn txt_and_bookmark_examples() {
     let args: TxtPreviewSplitArgs = serde_json::from_value(preview["args"].clone()).unwrap();
     e_reader_lib::txt::split::regex(&args.chapter_regex, args.heading_max_chars).unwrap();
 }
+
+#[test]
+fn book_set_section_chars_example() {
+    let e: Value = serde_json::from_str(include_str!(
+        "../../contract/examples/book_set_section_chars.json"
+    ))
+    .unwrap();
+    roundtrip::<BookSetSectionCharsArgs>(&e["args"]);
+}

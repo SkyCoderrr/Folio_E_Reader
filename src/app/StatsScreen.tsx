@@ -1,4 +1,5 @@
-﻿import { useEffect, useState } from 'react';
+import { errorCopy } from '../ipc/errorCopy';
+import { useEffect, useState } from 'react';
 import { StatsPage } from '../features/stats/StatsPage';
 import { invoke } from '../ipc/commands';
 import { statsModel, statsRange } from './statsModel';
@@ -22,7 +23,7 @@ export function StatsScreen({
         if (!disposed) setModel(statsModel(result, today, library ?? []));
       })
       .catch((e: unknown) => {
-        if (!disposed) setError(String(e));
+        if (!disposed) setError(errorCopy(e));
       });
     return () => {
       disposed = true;

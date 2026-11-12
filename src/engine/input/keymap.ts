@@ -45,6 +45,28 @@ export const DEFAULT_KEYMAP: Partial<Record<ActionId, string[]>> = {
   'settings.open': ['Ctrl+Comma'],
   'app.quit': ['Ctrl+Q'],
 };
+/**
+ * Reader actions that stay live while a panel is open or focus is on a control (the 'panel' scope):
+ * they change the chrome or mark the place, never move the reading position, and never use
+ * Space/Enter/arrows.
+ */
+export const CHROME_ACTIONS: ReadonlySet<ActionId> = new Set<ActionId>([
+  'dismiss',
+  'bookmark.toggle',
+  'toc.toggle',
+  'bookmarks.show',
+  'appearance.toggle',
+  'chrome.toggle',
+  'fullscreen.toggle',
+  'font.increase',
+  'font.decrease',
+  'font.reset',
+  'book.close',
+]);
+/** Whether `action` is routed in `scope` ('panel' carries the chrome subset of the reader). */
+export function inScope(action: ActionId, scope: Scope): boolean {
+  return scope === 'panel' ? CHROME_ACTIONS.has(action) : actionScope(action) === scope;
+}
 export function actionScope(action: ActionId): Scope {
   if (['autoscroll.pause', 'autoscroll.faster', 'autoscroll.slower'].includes(action))
     return 'reader.autoscroll';

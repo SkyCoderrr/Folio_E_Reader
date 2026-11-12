@@ -41,7 +41,12 @@ vi.mock('./flow/flowAnchor', async (original) => ({
   ...(await original<typeof import('./flow/flowAnchor')>()),
   captureAnchor: () => ({ index: 0, range: null }),
   textAnchorOf: () => null,
-  locatorOf: () => ({ sectionIndex: 0, charOffset: 0 }),
+  // Same first character everywhere; progress follows the real N1 rule (1 only at the end).
+  locatorOf: (_s: unknown, _a: unknown, _z: unknown, _b: unknown, atEnd: boolean) => ({
+    sectionIndex: 0,
+    charOffset: 0,
+    progress: atEnd ? 1 : 0.99,
+  }),
 }));
 
 let time: number;
@@ -94,9 +99,9 @@ function advance(ms: number) {
   }
 }
 
-it('pages by the overlap-preserving target and retargets another press without a write or stall', () => {
+it('pages by the overlap-preserving target, moves on the key press, and retargets another press without a write or stall', () => {
   renderer.page(1);
-  expect(renderer.getScrollTop()).toBe(0);
+  expect(renderer.getScrollTop()).toBe(1); // first pixel on the keydown: the next painted frame shows motion
   advance(50);
   const at = renderer.getScrollTop();
   renderer.page(1);
@@ -109,6 +114,61 @@ it('pages by the overlap-preserving target and retargets another press without a
   vi.advanceTimersByTime(1000);
   advance(500);
   expect(renderer.getScrollTop()).toBe(1460);
+});
+
+it('G-PM4: PgDn moves on every frame from the keydown to the end of its ease-out', () => {
+  const tops = [renderer.getScrollTop()];
+  renderer.page(1);
+  tops.push(renderer.getScrollTop()); // the keydown lead
+  for (let i = 0; i < 120; i++) {
+    advance(1000 / 240);
+    tops.push(renderer.getScrollTop());
+  }
+  const deltas = tops.slice(1).map((t, i) => t - tops[i]!);
+  const last = deltas.map((d) => d !== 0).lastIndexOf(true);
+  expect(deltas.slice(0, last + 1).filter((d) => d === 0)).toEqual([]);
+  expect(renderer.getScrollTop()).toBe(730); // same destination
+});
+
+it('G-PM2: a locator with progress 1 restores to the end of the book and reads 100%', async () => {
+  const restored = new FlowRenderer();
+  const seen: number[] = [];
+  restored.on('relocate', ({ locator }) => seen.push(locator.progress));
+  const host = document.createElement('div');
+  document.body.append(host);
+  await restored.mount(
+    host,
+    { sections: [{ size: 1 }, { size: 1 }, { size: 1 }] } as BookSource,
+    compileStyle(DEFAULT_READING_STYLE),
+    { sectionIndex: 2, cfi: null, charOffset: 900, globalCharOffset: null, progress: 1, snippet: 'last line' },
+  );
+  expect(restored.getScrollTop()).toBe(5200); // the bottom, not "the saved line at the top"
+  expect(restored.isAtEnd()).toBe(true);
+  expect(seen).toEqual([1]);
+  restored.destroy();
+});
+
+it('G-PM2: reaching the end emits progress 1 even when the first character on screen does not change', () => {
+  const seen: number[] = [];
+  renderer.on('relocate', ({ locator }) => seen.push(locator.progress));
+  const settle = () => {
+    renderer.scrollElement!.dispatchEvent(new Event('scroll'));
+    vi.advanceTimersByTime(1000);
+  };
+  renderer.setScrollTop(5180); // restored a part line short of the bottom
+  settle();
+  renderer.setScrollTop(5200); // Ctrl+End: a 20 px move, same first character
+  settle();
+  // 5180 is the same position as the mount (same first character, not the end): no event. The end
+  // is a new position; the old key (section:char) dropped it and the readout stayed at 99%.
+  expect(seen).toEqual([1]);
+});
+
+it('N1: the bottom tolerates the fractional device-pixel scrollTop of a scaled display', () => {
+  renderer.setScrollTop(5199.4);
+  expect(renderer.isAtEnd()).toBe(true);
+  renderer.setScrollTop(5198);
+  expect(renderer.isAtEnd()).toBe(false);
 });
 
 it('animates a mounted section edge within two viewports', async () => {
@@ -125,6 +185,7 @@ it('animates a mounted section edge within two viewports', async () => {
 it('jumps distant edges and nearby unmounted edges immediately', async () => {
   await renderer.goToSectionEdge(2, 'end');
   expect(renderer.getScrollTop()).toBe(5200);
+  expect(renderer.isAtEnd()).toBe(true); // Ctrl+End is the end of the book
   state.mounted.delete(1);
   renderer.setScrollTop(1800);
   await renderer.goToSectionEdge(1, 'start');

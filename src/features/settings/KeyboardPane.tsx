@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ActionId, BossKeyStatus, Chord } from '@contract/types';
+import { isAppError } from '../../ipc/commands';
+import { errorCopy } from '../../ipc/errorCopy';
 import { Button, Switch } from '../../ui/kit';
 import {
   MAX_CHORDS_PER_ACTION,
@@ -36,6 +38,7 @@ export interface KeyboardPaneProps {
 type Target = 'boss' | ActionId;
 interface Notice {
   target: Target;
+  success?: boolean;
   text: string;
   /** Present for a same-scope conflict: offers Replace. */
   replace?: { actionId: ActionId; chord: string; other: KeymapEntry };
@@ -85,10 +88,13 @@ export function KeyboardPane(p: KeyboardPaneProps) {
     setNotice(null);
     try {
       await p.onBossShortcut(chord);
-    } catch {
+      setNotice({ target: 'boss', text: `${formatChord(chord)} is ready.`, success: true });
+    } catch (e) {
       setNotice({
         target: 'boss',
-        text: `Couldn't set ${formatChord(chord)}. Try another shortcut.`,
+        text: isAppError(e) && e.code === 'SHORTCUT_IN_USE'
+          ? 'In use by another app. Try another shortcut.'
+          : errorCopy(e),
       });
     }
   }
@@ -203,7 +209,7 @@ export function KeyboardPane(p: KeyboardPaneProps) {
           </div>
         </div>
         {bossNotice ? (
-          <div className={styles.error} role="alert">
+          <div className={bossNotice.success ? undefined : styles.error} role={bossNotice.success ? "status" : "alert"}>
             {bossNotice.text}
           </div>
         ) : null}

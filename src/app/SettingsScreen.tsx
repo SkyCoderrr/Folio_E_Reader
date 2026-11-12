@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ACTION_IDS } from '@contract/types';
 import type { AppInfo, BossKeyStatus } from '@contract/types';
 import { invoke } from '../ipc/commands';
+import { bossKeyFailureCopy } from '../ipc/errorCopy';
 import { useSettings, flushSettings } from '../state/settingsStore';
 import { useLibrary, errorMessage } from '../state/libraryStore';
 import { DEFAULT_KEYMAP, actionScope } from '../engine/input/keymap';
@@ -74,8 +75,7 @@ export function SettingsScreen({
             <>
               {bossStatus?.enabled && !bossStatus.registered && (
                 <div role="alert">
-                  Boss key unavailable: {bossStatus.error?.message ?? bossStatus.shortcut}. Change
-                  it in Keyboard settings.
+                  {bossKeyFailureCopy(bossStatus.shortcut, bossStatus.error)}
                 </div>
               )}
               {Boolean(message || error) && (

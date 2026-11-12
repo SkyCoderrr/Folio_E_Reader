@@ -137,3 +137,21 @@ it('seeds persisted per-book speed and combines it with new active data', () => 
   fresh.seed(299000, 1000, null);
   expect(fresh.speed).toBeNull();
 });
+
+it('reports one error per stats-save failure streak and retries retained data', async () => {
+  let now = 0;
+  const failure = { code: 'DB_ERROR', message: 'private sqlite detail' };
+  const save = vi.fn(async () => { throw failure; });
+  const report = vi.fn();
+  const tracker = new SessionTracker('book', 30000, save, () => now, report);
+  now = 12000;
+  await expect(tracker.flush()).rejects.toEqual(failure);
+  for (let i = 0; i < 10; i++) await expect(tracker.flushPending()).rejects.toEqual(failure);
+  expect(report).toHaveBeenCalledOnce();
+  save.mockImplementationOnce(async () => undefined as never);
+  await tracker.flushPending();
+  now += 12000;
+  await expect(tracker.flush()).rejects.toEqual(failure);
+  expect(report).toHaveBeenCalledTimes(2);
+  expect(save.mock.calls[0]).toEqual(save.mock.calls[1]);
+});

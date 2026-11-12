@@ -146,15 +146,7 @@ pub async fn kv_set(app: AppHandle, key: String, value: JsonValue) -> Result<(),
 }
 #[tauri::command]
 pub async fn settings_get(app: AppHandle) -> Result<Settings, AppError> {
-    state_worker(app, |state| {
-        Ok(state
-            .settings
-            .lock()
-            .map_err(crate::storage::io_error)?
-            .effective
-            .clone())
-    })
-    .await
+    state_worker(app, |state| Ok(state.settings.snapshot()?.effective)).await
 }
 #[tauri::command]
 pub async fn settings_patch(
@@ -162,11 +154,11 @@ pub async fn settings_patch(
     patch: serde_json::Value,
 ) -> Result<Settings, AppError> {
     state_worker(app, move |state| {
+        let path = state.profile.settings.clone();
+        let test = state.profile.is_test;
         state
             .settings
-            .lock()
-            .map_err(crate::storage::io_error)?
-            .change(&state.profile.settings, patch, true, state.profile.is_test)
+            .update(move |candidate| candidate.change(&path, patch, true, test))
     })
     .await
 }
@@ -176,16 +168,11 @@ pub async fn settings_set(
     settings: serde_json::Value,
 ) -> Result<Settings, AppError> {
     state_worker(app, move |state| {
+        let path = state.profile.settings.clone();
+        let test = state.profile.is_test;
         state
             .settings
-            .lock()
-            .map_err(crate::storage::io_error)?
-            .change(
-                &state.profile.settings,
-                settings,
-                false,
-                state.profile.is_test,
-            )
+            .update(move |candidate| candidate.change(&path, settings, false, test))
     })
     .await
 }
@@ -231,7 +218,7 @@ pub async fn boss_set_shortcut(
 mod batch2_tests {
     use super::*;
     use serde_json::json;
-    use std::sync::{Arc, Mutex, mpsc};
+    use std::sync::{Arc, mpsc};
     fn state() -> (tempfile::TempDir, AppState) {
         let temp = tempfile::tempdir().unwrap();
         let profile = crate::profile::Profile::resolve(
@@ -246,7 +233,7 @@ mod batch2_tests {
             temp,
             AppState {
                 profile,
-                settings: Mutex::new(settings),
+                settings: crate::storage::SnapshotStore::new(settings),
                 kv,
                 applied_title_bar: TitleBarMode::Custom,
                 library: Arc::new(crate::import::Library::start(db, |_| {})),
@@ -256,7 +243,13 @@ mod batch2_tests {
     #[test]
     fn app_info_reports_applied_mode_after_pending_setting_changes() {
         let (_temp, state) = state();
-        state.settings.lock().unwrap().effective.window.title_bar = TitleBarMode::Native;
+        state
+            .settings
+            .update(|s| {
+                s.effective.window.title_bar = TitleBarMode::Native;
+                Ok(())
+            })
+            .unwrap();
         assert_eq!(
             runtime_info(&state).unwrap().title_bar_mode,
             TitleBarMode::Custom
@@ -264,7 +257,42 @@ mod batch2_tests {
         state.library.close();
     }
     #[test]
-    fn position_save_and_reads_finish_while_import_mutex_is_held() {
+    fn app_info_tracks_offline_root_and_recovery_without_rewriting_settings() {
+        let (temp, state) = state();
+        let custom = temp.path().join("custom");
+        std::fs::create_dir(&custom).unwrap();
+        state.library.db.set_library_dir(custom.clone());
+        state.library.db.require_existing_library(true);
+        let folder = custom.to_string_lossy().into_owned();
+        let path = state.profile.settings.clone();
+        state
+            .settings
+            .update(move |settings| {
+                settings.effective.library.folder = Some(folder);
+                settings.library_dir = custom;
+                settings.write(&path)
+            })
+            .unwrap();
+        let before = std::fs::read(&state.profile.settings).unwrap();
+        std::fs::remove_dir(state.library.db.library_dir()).unwrap();
+        assert!(runtime_info(&state).unwrap().library_offline);
+        assert!(
+            state
+                .settings
+                .snapshot()
+                .unwrap()
+                .effective
+                .library
+                .folder
+                .is_some()
+        );
+        std::fs::create_dir(state.library.db.library_dir()).unwrap();
+        assert!(!runtime_info(&state).unwrap().library_offline);
+        assert_eq!(std::fs::read(&state.profile.settings).unwrap(), before);
+        state.library.close();
+    }
+    #[test]
+    fn persistence_and_reads_finish_while_folder_file_gate_is_held() {
         let (temp, state) = state();
         let source = temp.path().join("book.txt");
         std::fs::write(&source, "book").unwrap();
@@ -275,7 +303,7 @@ mod batch2_tests {
         )
         .unwrap();
         let id = book.unwrap().id;
-        let guard = state.library.mutation.lock().unwrap();
+        let guard = state.library.access.root.write().unwrap();
         let library = state.library.clone();
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
@@ -286,9 +314,20 @@ mod batch2_tests {
                     l.db.position_save(&id, json!({"sectionIndex":0,"cfi":null,"charOffset":7,"globalCharOffset":7,"progress":0.5,"snippet":"saved"}))?;
                     assert_eq!(l.db.position_get(&id)?.unwrap().char_offset, 7);
                     assert_eq!(l.db.list()?.len(), 1);
+                    assert_eq!(l.db.get(&id)?.id, id);
                     assert!(l.db.bookmarks_list(&id)?.is_empty());
                     l.db.chapter_mark_read(&id, "chapter")?;
                     assert!(!l.db.chapters_read_get(&id)?.chapter_keys.is_empty());
+                    l.db.stats_session_save(ReadingSessionInput {
+                        book_id: id,
+                        started_at: 1794268800000,
+                        ended_at: 1794269100000,
+                        active_ms: 300000,
+                        chars_read: 1500,
+                        start_progress: 0.1,
+                        end_progress: 0.2,
+                    })?;
+                    l.db.stats_query("2026-11-10", "2026-11-11")?;
                     Ok(())
                 },
             ));
@@ -297,7 +336,7 @@ mod batch2_tests {
         let result = rx.recv_timeout(std::time::Duration::from_millis(1200));
         drop(guard);
         result
-            .expect("persistence waited behind import mutex")
+            .expect("persistence waited behind folder file gate")
             .unwrap();
         state.library.close();
     }

@@ -4,7 +4,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { TocItem } from '../../engine/book/BookSource';
 import { TocSidebar, type TocSidebarProps } from './TocSidebar';
-import type { TocBookInfo } from './tocModel';
+import { buildTocSpans, classifyToc, type TocBookInfo, type TocPosition } from './tocModel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -25,19 +25,31 @@ afterEach(() => {
   host.remove();
 });
 
-function render(over: Partial<TocSidebarProps> = {}) {
+const hrefs = (items: TocItem[]): string[] => items.flatMap((i) => [i.href, ...hrefs(i.subitems ?? [])]);
+/** Test inputs: a TocBookInfo + position (or just the current href), turned into spans + reading. */
+type Over = Partial<TocSidebarProps> & { tocBook?: TocBookInfo; position?: TocPosition; currentHref?: string | null };
+function render({ tocBook, position, currentHref = 'b', ...over }: Over = {}) {
+  const t = over.toc ?? toc;
+  const all = hrefs(t);
+  const book: TocBookInfo = tocBook ?? {
+    resolve: (h) => (all.includes(h) ? all.indexOf(h) : null),
+    weights: all.map(() => 100),
+    chapterKey: (s, h) => `${s}${h}`,
+  };
+  const spans = buildTocSpans(t, book);
+  const at = position ?? (currentHref ? { sectionIndex: all.indexOf(currentHref), progress: 0 } : null);
   const props: TocSidebarProps = {
     open: true,
     animate: false,
     tab: 'contents',
     onTabChange: vi.fn(),
-    toc,
-    currentHref: 'b',
+    toc: t,
+    spans,
+    reading: classifyToc(spans, at),
     onNavigate: vi.fn(),
     bookmarks: [{ id: '1', label: 'Ch 1', excerpt: 'text', progress: 0.5, createdAt: new Date().toISOString() }],
     onBookmarkOpen: vi.fn(),
     onBookmarkDelete: vi.fn(),
-    onClose: vi.fn(),
     ...over,
   };
   act(() => root.render(createElement(TocSidebar, props)));
@@ -49,8 +61,8 @@ const labels = () => [...host.querySelectorAll('[role="treeitem"]')].map((e) => 
 it('renders a tree with the current row marked and deeper levels collapsed', () => {
   render();
   expect(host.querySelector('[role="tree"]')).not.toBeNull();
-  expect(host.querySelector('[aria-current="true"]')?.textContent).toBe('B');
-  expect(labels()).toEqual(['A', 'A1', 'B']);
+  expect(host.querySelector('[aria-current="true"]')?.textContent).toBe('B0%');
+  expect(labels()).toEqual(['A', 'A1', 'B0%']);
 });
 
 it('Enter navigates the focused row', () => {
@@ -81,7 +93,11 @@ it('bookmark delete button calls onBookmarkDelete', () => {
 // ── t29u: visit memory styling ──
 const book5 = (format: 'epub' | 'txt'): { toc: TocItem[]; tocBook: TocBookInfo } => ({
   toc: [0, 1, 2, 3, 4].map((i) => ({ label: `C${i}`, href: `s${i}` })),
-  tocBook: { resolve: (h) => Number(h.slice(1)), sizes: Array(5).fill(100), format },
+  tocBook: {
+    resolve: (h) => Number(h.slice(1)),
+    weights: Array(5).fill(100),
+    chapterKey: (s) => (format === 'txt' ? `t:${s}` : `s:${s}#`),
+  },
 });
 const rowState = () =>
   [...host.querySelectorAll<HTMLElement>('[role="treeitem"]')].map((e) =>
@@ -129,7 +145,11 @@ it('fragments: the measured entry is current; while measuring no row is current 
     { label: 'V', href: 's1#c5' },
     { label: 'VI', href: 's2' },
   ];
-  const base: TocBookInfo = { resolve: (h) => Number(h.slice(1, 2)), sizes: [50, 900, 100], format: 'epub' };
+  const base: TocBookInfo = {
+    resolve: (h) => Number(h.slice(1, 2)),
+    weights: [50, 900, 100],
+    chapterKey: (s, h) => `s:${s}#${h.split('#')[1] ?? ''}`,
+  };
   const position = { sectionIndex: 1, charOffset: 700, progress: 750 / 1050 }; // V spans 600..900
   const readKeys = new Set(['s:1#c1']); // I read, II skipped
   // the reader's section-level href (first entry of section 1) must not be used as a fallback
@@ -137,7 +157,7 @@ it('fragments: the measured entry is current; while measuring no row is current 
   expect(rowState()).toEqual(['unread', 'read', 'unread', 'unread', 'unread']);
   expect(host.querySelectorAll('[title="Progress in this chapter"]')).toHaveLength(0);
   const offsets = new Map([['s1#c1', 0], ['s1#c2', 300], ['s1#c5', 600]]);
-  render({ toc: t, tocBook: { ...base, chars: [50, 900, 100], offsets }, currentHref: 's1#c1', position, readKeys });
+  render({ toc: t, tocBook: { ...base, offsets }, currentHref: 's1#c1', position, readKeys });
   expect(rowState()).toEqual(['unread', 'read', 'unread', 'current', 'unread']);
   expect(host.querySelector('[aria-current="true"] [title="Progress in this chapter"]')?.textContent).toBe('33%');
 });

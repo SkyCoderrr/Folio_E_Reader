@@ -1,22 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import type { TocItem } from '../../engine/book/BookSource';
-import { buildTocSpans, chapterKeyFor, classifyToc, tocLabelAt, type TocBookInfo } from './tocModel';
+import { buildTocSpans, chapterKeyFor, classifyToc, tocLabelAt, txtChapterKey, type TocBookInfo } from './tocModel';
+
+const keys = (format: 'epub' | 'txt') => (start: number, href: string) =>
+  format === 'txt' ? txtChapterKey('utf-8', start * 100) : chapterKeyFor(start, href);
 
 // 5 sections, sizes 100 each. href "sN" -> section N.
 const info = (n = 5, format: 'epub' | 'txt' = 'epub'): TocBookInfo => ({
   resolve: (h) => (/^s\d+/.test(h) ? Number(h.slice(1).split('#')[0]) : null),
-  sizes: Array(n).fill(100),
-  format,
+  weights: Array(n).fill(100),
+  chapterKey: keys(format),
 });
 const flat: TocItem[] = [0, 1, 2, 3, 4].map((i) => ({ label: `C${i}`, href: `s${i}` }));
 const at = (sectionIndex: number, progress: number) => ({ sectionIndex, progress });
 
 describe('chapterKey scheme', () => {
-  it('EPUB: s:<spine>#<fragment or empty>; TXT: t:<chapter index>; unresolved: null', () => {
-    expect(chapterKeyFor('epub', 3, 'ch3.xhtml')).toBe('s:3#');
-    expect(chapterKeyFor('epub', 3, 'ch3.xhtml#sec2')).toBe('s:3#sec2');
-    expect(chapterKeyFor('txt', 7, 's7')).toBe('t:7');
-    expect(chapterKeyFor('epub', null, 'http://x')).toBeNull();
+  it('EPUB: s:<spine>#<fragment or empty>; TXT: t:<encoding>@<start char>; unresolved: null', () => {
+    expect(chapterKeyFor(3, 'ch3.xhtml')).toBe('s:3#');
+    expect(chapterKeyFor(3, 'ch3.xhtml#sec2')).toBe('s:3#sec2');
+    expect(txtChapterKey('gb18030', 7000)).toBe('t:gb18030@7000');
+    expect(buildTocSpans([{ label: 'x', href: 'http://x' }], info())[0]!.chapterKey).toBeNull();
   });
   it('spans carry stable keys that do not depend on the position', () => {
     const toc: TocItem[] = [
@@ -25,8 +28,8 @@ describe('chapterKey scheme', () => {
     ];
     expect(buildTocSpans(toc, info()).map((s) => s.chapterKey)).toEqual(['s:0#top', 's:2#']);
     expect(buildTocSpans(flat.slice(0, 2), info(5, 'txt')).map((s) => s.chapterKey)).toEqual([
-      't:0',
-      't:1',
+      't:utf-8@0',
+      't:utf-8@100',
     ]);
   });
 });
@@ -69,10 +72,10 @@ describe('classifyToc (last-read chapter only; no inferred read state)', () => {
     expect(classifyToc(buildTocSpans(toc, info()), at(1, 0.3)).currentKey).toBe('2');
   });
   it('TXT: chapters are sections with char sizes, weighted by size', () => {
-    const txt: TocBookInfo = { resolve: info().resolve, sizes: [1000, 3000], format: 'txt' };
+    const txt: TocBookInfo = { resolve: info().resolve, weights: [1000, 3000], chapterKey: keys('txt') };
     const r = classifyToc(buildTocSpans(flat.slice(0, 2), txt), at(1, 0.25 + 0.75 * 0.4));
     expect(r.currentKey).toBe('1');
-    expect(r.currentChapterKey).toBe('t:1');
+    expect(r.currentChapterKey).toBe('t:utf-8@100');
     expect(r.percent).toBe(40);
   });
 });
@@ -82,9 +85,8 @@ describe('classifyToc with several chapters in one section (fragment offsets)', 
   // section 0 = cover + front matter, section 1 = chapters I..III (1000 chars), section 2 = IV
   const frag: TocBookInfo = {
     resolve: info().resolve,
-    sizes: [50, 1000, 100],
-    chars: [50, 1000, 100],
-    format: 'epub',
+    weights: [50, 1000, 100],
+    chapterKey: keys('epub'),
     offsets: new Map([
       ['s1#c1', 0],
       ['s1#c2', 300],
@@ -130,7 +132,7 @@ describe('classifyToc with several chapters in one section (fragment offsets)', 
     expect(classifyToc(rough, pos(1, 650)).currentKey).toBe('1');
   });
   it('while offsets are being measured (pending) a shared section has no current entry, never a guess', () => {
-    const pending = buildTocSpans(toc, { ...frag, chars: undefined, offsets: undefined, pending: true });
+    const pending = buildTocSpans(toc, { ...frag, offsets: undefined, pending: true });
     expect(pending.map((s) => s.unsure)).toEqual([false, true, true, true, false]);
     for (const off of [0, 400, 900]) {
       const r = classifyToc(pending, pos(1, off));
@@ -158,4 +160,27 @@ it('tocLabelAt resolves row keys to labels', () => {
   expect(tocLabelAt(toc, '0')).toBe('A');
   expect(tocLabelAt(toc, '0.0')).toBe('B');
   expect(tocLabelAt(toc, '1')).toBeNull();
+});
+
+describe('#5: TXT chapter keys across a re-split', () => {
+  const spansOf = (encoding: string, starts: number[]) =>
+    buildTocSpans(
+      starts.map((_, i) => ({ label: `C${i}`, href: `s${i}` })),
+      {
+        resolve: (h) => Number(h.slice(1)),
+        weights: starts.map((s, i) => (starts[i + 1] ?? s + 100) - s),
+        chapterKey: (start) => txtChapterKey(encoding, starts[start]!),
+      },
+    ).map((s) => s.chapterKey);
+  it('a chapter that still starts at the same character keeps its mark; moved chapters do not inherit one', () => {
+    const before = spansOf('utf-8', [0, 100, 200]);
+    const after = spansOf('utf-8', [0, 50, 100, 200]); // a new chapter detected at 50
+    const read = new Set([before[1]!]); // chapter at 100 was read
+    expect(after.map((k) => read.has(k!))).toEqual([false, false, true, false]);
+    // by index, the old "t:1" scheme would have muted the new chapter at 50 instead
+  });
+  it('a different encoding re-keys every chapter (the text itself changed)', () => {
+    const utf8 = spansOf('utf-8', [0, 100]);
+    expect(spansOf('gb18030', [0, 100]).some((k) => utf8.includes(k))).toBe(false);
+  });
 });

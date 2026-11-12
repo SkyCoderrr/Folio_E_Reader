@@ -34,7 +34,7 @@ pub fn split(text: &str, pattern: &str, max: u32, chunk: u32) -> Result<Vec<Sect
         }
     }
     let mut starts = Vec::new();
-    if !headings.is_empty() {
+    if headings.len() >= 2 {
         if !text[..headings[0].0].trim().is_empty() {
             starts.push((0, 0, "Preface".to_string()));
         } else {
@@ -75,4 +75,42 @@ pub fn split(text: &str, pattern: &str, max: u32, chunk: u32) -> Result<Vec<Sect
         global += chars;
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn fewer_than_two_headings_use_parts_without_losing_utf16_text() {
+        for prefix in ["", "Chapter 1\n"] {
+            let text = format!("{prefix}{}", "abc😀\n\n".repeat(20));
+            let parts = split(&text, "^Chapter [0-9]+$", 40, 15).unwrap();
+            assert!(parts.len() > 2);
+            assert!(
+                parts
+                    .iter()
+                    .enumerate()
+                    .all(|(i, s)| s.title == format!("Part {}", i + 1))
+            );
+            assert_eq!(
+                parts
+                    .iter()
+                    .map(|s| &text[s.start..s.end])
+                    .collect::<String>(),
+                text
+            );
+            assert_eq!(
+                parts.iter().map(|s| s.chars).sum::<u64>(),
+                text.encode_utf16().count() as u64
+            );
+        }
+    }
+    #[test]
+    fn two_headings_keep_chapter_split() {
+        let parts = split("Chapter 1\none\nChapter 2\ntwo", "^Chapter [0-9]+$", 40, 2).unwrap();
+        assert_eq!(
+            parts.iter().map(|s| s.title.as_str()).collect::<Vec<_>>(),
+            ["Chapter 1", "Chapter 2"]
+        );
+    }
 }

@@ -1,4 +1,4 @@
-# Errors (contract v0.8.0)
+# Errors (contract v0.9.0)
 
 ## Shape
 

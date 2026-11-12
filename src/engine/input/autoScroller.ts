@@ -1,15 +1,18 @@
-﻿import type { AutoscrollSettings } from '@contract/types';
+import type { AutoscrollSettings } from '@contract/types';
 import { browserClock, type FrameClock } from './scrollAnimation';
 import type { ScrollTarget } from './smoothScroller';
 
 export type AutoScrollState = 'off' | 'running' | 'paused';
-export interface AutoScrollTarget extends ScrollTarget {
+/**
+ * Continuous targets scroll pixels; page targets (paginator, two-page filmstrip) turn one page
+ * every viewport-height of travel (ADR-005).
+ */
+export type AutoScrollTarget = ScrollTarget & {
   page(dir: 1 | -1): void;
   getViewportHeight(): number;
+  getLineHeight(): number;
   isAtEnd(): boolean;
-  /** True for page-turning renderers (paginator, two-page filmstrip): auto-scroll turns one page every viewport-height of travel instead of scrolling pixels (ADR-005). */
-  readonly turnsPages?: boolean;
-}
+};
 export function autoScrollSpeed(speed: number, step: number, direction: 1 | -1): number {
   return Math.min(
     400,
@@ -26,7 +29,6 @@ export class AutoScroller {
   constructor(
     private target: AutoScrollTarget,
     public settings: AutoscrollSettings,
-    private paged = false,
     private reducedMotion = false,
     private changed: (state: AutoScrollState) => void = () => {},
     private clock: FrameClock = browserClock,
@@ -78,7 +80,7 @@ export class AutoScroller {
     this.pending +=
       (Math.max(0, time - this.last) * Math.min(400, Math.max(5, this.settings.speed))) / 1000;
     this.last = time;
-    if (this.paged || this.target.turnsPages === true) {
+    if (this.target.kind === 'paged') {
       const distance = Math.max(1, this.target.getViewportHeight());
       if (this.pending >= distance) {
         this.pending %= distance;

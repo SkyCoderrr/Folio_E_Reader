@@ -1,6 +1,6 @@
-# Database (contract v0.8.0)
+# Database (contract v0.9.0)
 
-Schema: [`db-schema.sql`](db-schema.sql) (SQLite schema v2, from PRD §9.3, with CHECK constraints added).
+Schema: [`db-schema.sql`](db-schema.sql) (SQLite schema v3, from PRD §9.3, with CHECK constraints added).
 
 ## Ownership
 
@@ -56,3 +56,6 @@ Schema: [`db-schema.sql`](db-schema.sql) (SQLite schema v2, from PRD §9.3, with
 ## Stats (M8)
 
 Stats introduced in schema v1; no stats migration needed in v2. sessions.chars_advanced stores input charsRead and returns as aggregate chars. Save-time local days, proportional splitting, filtering and rolling speed are specified in commands.md. book_set_total_chars updates existing books.total_chars. Query metadata comes from books; time and character aggregates come from sessions.
+
+## EPUB section measurement cache (v3)
+Migration 003 adds epub_section_chars, keyed by book_id with removal cascade. file_hash is the full BLAKE3 content digest; metrics_json stores EpubSectionChars. book_open only returns a matching digest. Null sections retain partial success and are retried on the next open. Prior migrations remain immutable. No settings schema change.

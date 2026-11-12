@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useOverlay } from '../../state/overlayStore';
 import clsx from 'clsx';
 import kit from '../../ui/kit.module.css';
 import styles from './LibraryView.module.css';
@@ -23,6 +24,7 @@ export function ContextMenu({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
+  useOverlay(useId(), 'modal', true); // #13: library shortcuts stay off while it is open
 
   useLayoutEffect(() => {
     const r = ref.current?.getBoundingClientRect();

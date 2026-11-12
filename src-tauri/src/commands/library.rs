@@ -42,18 +42,9 @@ pub async fn library_set_folder(
         let default = state
             .profile
             .default_library(|| app.path().document_dir().map_err(crate::storage::io_error))?;
-        state.profile.validate_library(
-            path.as_deref()
-                .map(std::path::Path::new)
-                .unwrap_or(&default),
-        )?;
         state.library.with_idle(|| {
             state.library.prepare_folder_change()?;
-            let mut settings = state
-                .settings
-                .lock()
-                .map_err(crate::storage::io_error)?
-                .clone();
+            let mut settings = state.settings.snapshot()?;
             let before = settings.effective.library.clone();
             let result = crate::library_folder::change_with_commit(
                 &state.profile,
@@ -70,25 +61,21 @@ pub async fn library_set_folder(
                     Ok(())
                 },
                 |candidate| {
-                    let mut live = state.settings.lock().map_err(crate::storage::io_error)?;
-                    let mut merged = live.clone();
-                    merged.effective.library = candidate.effective.library.clone();
-                    merged.library_dir = candidate.library_dir.clone();
-                    merged.write(&state.profile.settings)?;
-                    *live = merged;
-                    Ok(())
+                    let folder = candidate.effective.library.clone();
+                    let library_dir = candidate.library_dir.clone();
+                    let path = state.profile.settings.clone();
+                    state.settings.update(move |live| {
+                        live.effective.library = folder;
+                        live.library_dir = library_dir;
+                        live.write(&path)
+                    })
                 },
             )?;
             if before != settings.effective.library {
                 let _ = app.emit(
                     event::SETTINGS_CHANGED,
                     SettingsChangedPayload {
-                        settings: state
-                            .settings
-                            .lock()
-                            .map_err(crate::storage::io_error)?
-                            .effective
-                            .clone(),
+                        settings: state.settings.snapshot()?.effective,
                         cause: SettingsChangedCause::LibraryFolder,
                     },
                 );
@@ -180,8 +167,7 @@ pub async fn library_remove(
     book_ids: Vec<String>,
 ) -> Result<LibraryRemoveResult, AppError> {
     worker(state.library.clone(), "library_remove", move |l| {
-        let _guard = l.mutation.lock().map_err(crate::db::db_error)?;
-        l.db.remove(&book_ids)
+        l.remove(&book_ids)
     })
     .await
 }
@@ -190,13 +176,17 @@ pub async fn book_open(app: tauri::AppHandle, book_id: String) -> Result<BookOpe
     use tauri::Manager;
     let handle = app.clone();
     super::state_worker(app, move |state| {
-        let _guard = state.library.mutation.lock().map_err(crate::db::db_error)?;
-        let result = state.library.db.open_book(&book_id)?;
-        handle
-            .asset_protocol_scope()
-            .allow_file(&result.book.file_path)
-            .map_err(crate::storage::io_error)?;
-        Ok(result)
+        state
+            .library
+            .access
+            .with_books(std::slice::from_ref(&book_id), || {
+                let result = state.library.db.open_book(&book_id)?;
+                handle
+                    .asset_protocol_scope()
+                    .allow_file(&result.book.file_path)
+                    .map_err(crate::storage::io_error)?;
+                Ok(result)
+            })
     })
     .await
 }

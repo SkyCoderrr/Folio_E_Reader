@@ -55,11 +55,11 @@ pub fn load(
         fixed["bossKey"]["shortcut"] = json!("Ctrl+Alt+B");
     }
     fixed["version"] = json!(1);
-    let default_library = profile.default_library(documents)?;
     let requested = fixed["library"]["folder"]
         .as_str()
         .map(PathBuf::from)
-        .unwrap_or(default_library);
+        .map(Ok)
+        .unwrap_or_else(|| profile.default_library(documents))?;
     let library_dir = profile.validate_library(&requested).unwrap_or_else(|e| {
         log::warn!("Library folder unavailable: {e}");
         requested

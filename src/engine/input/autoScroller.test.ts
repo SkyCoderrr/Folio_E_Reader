@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import defaults from '../../../contract/settings.defaults.json';
 import { AutoScroller, autoScrollSpeed } from './autoScroller';
 import type { FrameClock } from './scrollAnimation';
@@ -21,14 +21,26 @@ function rig(hz = 60, paged = false, reduced = false) {
       frames.delete(id);
     },
   };
+  const target = paged
+    ? {
+        kind: 'paged' as const,
+        holdStart: () => false,
+        holdMove: () => false,
+        holdEnd: () => {},
+      }
+    : {
+        kind: 'continuous' as const,
+        scrollBy: (px: number) => {
+          top += px;
+          writes.push(px);
+        },
+        getScrollTop: () => top,
+        getMaxScroll: () => 10000,
+        getPixelSize: () => 1,
+      };
   const auto = new AutoScroller(
     {
-      scrollBy: (px) => {
-        top += px;
-        writes.push(px);
-      },
-      getScrollTop: () => top,
-      getMaxScroll: () => 10000,
+      ...target,
       getLineHeight: () => 20,
       getViewportHeight: () => 800,
       page: () => {
@@ -37,7 +49,6 @@ function rig(hz = 60, paged = false, reduced = false) {
       isAtEnd: () => end,
     },
     { ...defaults.autoscroll },
-    paged,
     reduced,
     undefined,
     clock,

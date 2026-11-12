@@ -1,5 +1,6 @@
+import { errorCopy } from '../ipc/errorCopy';
 import { create } from 'zustand';
-import type { BookRecord, ImportDonePayload, LibrarySettings, LibrarySort } from '@contract/types';
+import type { BookRecord, BookOpenResult, ImportDonePayload, LibrarySettings, LibrarySort } from '@contract/types';
 import { toast } from 'sonner';
 import { invoke } from '../ipc/commands';
 import { listen } from '../ipc/events';
@@ -10,6 +11,7 @@ type Preferences = Pick<LibrarySettings, 'view' | 'sort' | 'sortDir' | 'filter'>
 export interface LibraryState extends Preferences {
   books: BookRecord[];
   opened: BookRecord | null;
+  openedData: BookOpenResult | null;
   importing: { done: number; total: number } | null;
   selection: string[];
   query: string;
@@ -71,6 +73,7 @@ export function createLibraryStore(settings = useSettings) {
       ...settings.getState().settings.library,
       books: [],
       opened: null,
+      openedData: null,
       importing: null,
       selection: [],
       query: '',
@@ -147,11 +150,11 @@ export function createLibraryStore(settings = useSettings) {
         const result = await invoke('book_open', { bookId: id });
         if (attempt !== opening) return;
         upsert(result.book);
-        set({ opened: result.book });
+        set({ opened: result.book, openedData: result });
       },
       close: () => {
         opening++;
-        set({ opened: null });
+        set({ opened: null, openedData: null });
       },
       setView: (view) => preferences({ view }),
       setSort: (sort, sortDir) => preferences({ sort, sortDir }),
@@ -163,7 +166,6 @@ export function createLibraryStore(settings = useSettings) {
   });
 }
 
-export function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String((e as { message?: string })?.message ?? e);
-}
+/** #10: what the UI shows for a failure is the user copy for its ErrorCode, never its message. */
+export const errorMessage = errorCopy;
 export const useLibrary = createLibraryStore();

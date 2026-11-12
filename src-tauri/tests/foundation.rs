@@ -378,6 +378,52 @@ fn recursive_library_alias_is_skipped_without_aborting_settings_load() {
     assert!(p.validate_library(&library.join("escape")).is_err());
 }
 
+#[cfg(windows)]
+#[test]
+fn unreadable_file_is_skipped_without_granting_or_aborting_the_library() {
+    use std::os::windows::process::CommandExt;
+    let (_temp, p) = profile();
+    let root = p.root.join("library");
+    fs::create_dir(&root).unwrap();
+    let id = "c".repeat(32);
+    let unreadable = root.join(format!("{id}.txt"));
+    let safe = root.join("safe.txt");
+    fs::write(&unreadable, "private").unwrap();
+    fs::write(&safe, "safe").unwrap();
+    let db = e_reader_lib::db::Database::open(p.clone(), root.clone());
+    db.insert(&e_reader_lib::db::NewBook {
+        id: id.clone(),
+        format: "txt".into(),
+        title: "unreadable".into(),
+        author: None,
+        language: None,
+        file_name: "unreadable.txt".into(),
+        file_size: 7,
+        cover: false,
+        metadata: json!({}),
+    })
+    .unwrap();
+    let output = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; $acl=Get-Acl -LiteralPath $env:E_READER_TEST_FILE; $sid=[System.Security.Principal.WindowsIdentity]::GetCurrent().User; $rule=[System.Security.AccessControl.FileSystemAccessRule]::new($sid,[System.Security.AccessControl.FileSystemRights]::ReadData,[System.Security.AccessControl.AccessControlType]::Deny); $acl.AddAccessRule($rule); Set-Acl -LiteralPath $env:E_READER_TEST_FILE -AclObject $acl"])
+        .env("E_READER_TEST_FILE", &unreadable).creation_flags(0x08000000).output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(fs::File::open(&unreadable).is_err());
+    assert!(settings::load(&p, || panic!()).is_ok());
+    assert!(p.validate_library(&root).is_ok());
+    assert_eq!(e_reader_lib::profile::library_files(&root), vec![safe]);
+    assert!(db.list().unwrap()[0].file_missing);
+    assert_eq!(
+        db.open_book(&id).unwrap_err().code,
+        ErrorCode::BookFileMissing
+    );
+    db.position_save(&id, json!({"sectionIndex":0,"cfi":null,"charOffset":7,"globalCharOffset":7,"progress":0.5,"snippet":"saved"})).unwrap();
+    // The denial applies only to ReadData. TempDir can still delete this file.
+}
+
 #[test]
 fn missing_custom_library_is_preserved_and_reported_offline() {
     use e_reader_lib::{
@@ -443,5 +489,98 @@ fn missing_custom_library_is_preserved_and_reported_offline() {
         !custom.exists(),
         "import recreated an unavailable custom root"
     );
+    // The same runtime and a fresh launch both recover without a settings edit.
+    fs::create_dir(&custom).unwrap();
+    fs::write(custom.join(format!("{}.txt", "a".repeat(32))), "restored").unwrap();
+    assert!(!library.db.library_offline());
+    assert!(!library.db.list().unwrap()[0].file_missing);
+    let reloaded = settings::load(&p, || panic!()).unwrap();
+    let reopened = Database::open(p.clone(), reloaded.library_dir);
+    reopened.require_existing_library(true);
+    assert!(!reopened.library_offline());
+    assert_eq!(reopened.list().unwrap().len(), 1);
+    assert!(!reopened.list().unwrap()[0].file_missing);
+    assert_eq!(
+        pipeline::item(
+            &library.db,
+            &mut Journal::load(&library.db).unwrap(),
+            &source
+        )
+        .unwrap()
+        .0,
+        ImportOutcome::Added
+    );
+    assert_eq!(library.db.list().unwrap().len(), 2);
     library.close();
+}
+
+#[test]
+fn unavailable_default_root_starts_offline_and_does_not_reset_books_or_settings() {
+    use e_reader_lib::{
+        db::{Database, NewBook},
+        import::{Library, journal::Journal, pipeline},
+    };
+    let (temp, p) = profile();
+    let root = p.default_library(|| panic!()).unwrap();
+    let input = json!({"version":1,"library":{"folder":null}});
+    fs::write(&p.settings, serde_json::to_vec(&input).unwrap()).unwrap();
+    fs::write(&root, "not a folder").unwrap();
+    let loaded = settings::load(&p, || panic!()).unwrap();
+    assert_eq!(loaded.library_dir, root);
+    assert_eq!(loaded.effective.library.folder, None);
+    let db = Database::open(p.clone(), loaded.library_dir);
+    assert!(db.library_offline());
+    let source = temp.path().join("source.txt");
+    fs::write(&source, "source").unwrap();
+    assert_eq!(
+        pipeline::item(&db, &mut Journal::load(&db).unwrap(), &source)
+            .unwrap_err()
+            .code,
+        ErrorCode::LibraryFolderInvalid
+    );
+    let library = Library::start(db, |_| {});
+    assert_eq!(
+        library
+            .enqueue(
+                "offline".into(),
+                vec![source.to_string_lossy().into_owned()]
+            )
+            .unwrap_err()
+            .code,
+        ErrorCode::LibraryFolderInvalid
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&fs::read(&p.settings).unwrap()).unwrap(),
+        input
+    );
+    library.close();
+    fs::remove_file(&root).unwrap();
+    let db = Database::open(p.clone(), root.clone());
+    // A first-use default is creatable. A missing root with existing books is offline.
+    assert!(!db.library_offline());
+    db.insert(&NewBook {
+        id: "b".repeat(32),
+        format: "txt".into(),
+        title: "retained".into(),
+        author: None,
+        language: None,
+        file_name: "retained.txt".into(),
+        file_size: 1,
+        cover: false,
+        metadata: json!({}),
+    })
+    .unwrap();
+    assert!(db.library_offline());
+    assert!(db.list().unwrap()[0].file_missing);
+    assert_eq!(
+        pipeline::item(&db, &mut Journal::load(&db).unwrap(), &source)
+            .unwrap_err()
+            .code,
+        ErrorCode::LibraryFolderInvalid
+    );
+    assert!(!root.exists());
+    fs::create_dir(&root).unwrap();
+    fs::write(root.join(format!("{}.txt", "b".repeat(32))), "retained").unwrap();
+    assert!(!db.library_offline());
+    assert!(!db.list().unwrap()[0].file_missing);
 }

@@ -39,6 +39,8 @@ const state = vi.hoisted(() => ({
   docs: [] as Document[],
   texts: new Map<Document, SectionText>(),
   places: [] as Array<{ base: number; x: number }>,
+  /** Sections the neighbour preloading never mounts (only a navigation does). */
+  lazy: new Set<number>(),
   rectCalls: [] as Array<{ frameAt: (i: number) => unknown; viewport: unknown; pitch: unknown }>,
   frames: null as unknown as {
     geometry: PagedGeometry;
@@ -151,7 +153,8 @@ vi.mock('./paged/pagedFrames', async () => {
       }
       reconcile(keep: number[], pinned: ReadonlySet<number>) {
         for (const i of [...this.#mounted.keys()]) if (!keep.includes(i) && !pinned.has(i)) this.#mounted.delete(i);
-        for (const i of keep) if (i >= 0 && i < this.#n && !this.#mounted.has(i)) this.#mounted.set(i, this.#make(i));
+        for (const i of keep)
+          if (i >= 0 && i < this.#n && !this.#mounted.has(i) && !state.lazy.has(i)) this.#mounted.set(i, this.#make(i));
       }
       remeasure() {
         return false;
@@ -229,6 +232,7 @@ beforeEach(() => {
   state.width = 1600;
   state.height = 1000;
   state.places = [];
+  state.lazy = new Set();
   state.rectCalls = [];
   state.texts = new Map();
   state.docs = [makeDoc(0, 8), makeDoc(1, 20), makeDoc(2, 3), makeDoc(3, 20)];
@@ -352,6 +356,19 @@ describe('page turn slide, paged + 1 (t20u #5)', () => {
     expect(r.getSectionIndex()).toBe(0);
   });
 
+  it('G-PM2: a locator with progress 1 restores to the last page of the book', async () => {
+    const { r } = await mount(2, {
+      sectionIndex: 3,
+      cfi: null,
+      charOffset: 5,
+      globalCharOffset: null,
+      progress: 1,
+      snippet: 'x',
+    });
+    expect(r.isAtEnd()).toBe(true);
+    expect(r.getLocator().progress).toBe(1);
+  });
+
   it('stops at the book edges', async () => {
     const { r } = await mount(1);
     r.page(-1);
@@ -378,7 +395,7 @@ describe('page turn slide, paged + 1 (t20u #5)', () => {
     scroller.release(-1);
     settle();
     expect(pos(r).column).toBe(0);
-    expect(r.getMaxScroll()).toBe(0);
+    expect(r.holdMove(10)).toBe(false); // paged + 1: no continuous travel after the press
   });
 
   it('paged + 1: a short tap (press, release within 120 ms) turns exactly one page, not two', async () => {
@@ -514,6 +531,28 @@ describe('two-page filmstrip (t20u #6, ADR-005)', () => {
     expect(Math.abs(x / pitch() - Math.round(x / pitch()))).toBeLessThan(1e-9); // on a page boundary
     expect(relocates.length).toBe(1);
     expect(pos(r).column).toBe(Math.round(x / pitch()));
+  });
+
+  it('a held key keeps going across a section boundary that was not loaded yet (#20)', async () => {
+    state.lazy = new Set([1]);
+    const { r } = await mount(2);
+    await r.goToSectionEdge(0, 'end');
+    r.page(1); // left page = section 0's last page; the next step needs section 1
+    settle();
+    expect(pos(r)).toEqual({ index: 0, column: state.frames.columns(0) - 1 });
+    expect(state.frames.mountedIndices()).not.toContain(1);
+    const scroller = new SmoothScroller(r);
+    scroller.press(1); // the first page step needs section 1: a navigation
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(visual().base).toBe(1);
+    for (let k = 0; k < 40; k++) frame();
+    expect(visual().base).toBe(1);
+    expect(visual().x).toBeGreaterThan(pitch() / 2); // still travelling inside section 1
+    expect(rafQueue.size).toBeGreaterThan(0);
+    scroller.release(1);
+    settle();
+    expect(visual().x % pitch()).toBe(0);
   });
 
   it('a short tap of the arrow key moves exactly one page', async () => {
@@ -659,13 +698,21 @@ describe('two-page filmstrip (t20u #6, ADR-005)', () => {
     expect(pos(r)).toEqual({ index: 1, column: 0 });
     await r.goToSectionEdge(3, 'end');
     expect(r.isAtEnd()).toBe(true);
-    expect(r.getMaxScroll()).toBe(r.getScrollTop()); // the smoothScroller stops at the book end
+    expect(r.holdStart(1)).toBe(true);
+    expect(r.holdMove(10)).toBe(false); // a held key stops at the book end
+    r.holdEnd();
+    settle();
     r.page(1);
     expect(rafQueue.size).toBe(0);
     await r.goToSectionEdge(0, 'start');
     expect(pos(r)).toEqual({ index: 0, column: 0 });
-    expect(r.getScrollTop()).toBe(0);
-    expect(r.getMaxScroll()).toBeGreaterThan(0);
+    expect(r.holdStart(-1)).toBe(true);
+    expect(r.holdMove(-10)).toBe(false); // ...and at the book start
+    r.holdEnd();
+    settle();
+    expect(r.holdStart(1)).toBe(true);
+    expect(r.holdMove(10)).toBe(true);
+    r.holdEnd();
   });
 });
 
@@ -900,3 +947,10 @@ it('restores an unmounted scroll section by progress instead of treating its pla
 
 // Keep the SectionFrame type import used (the fake implements the subset the renderer reads).
 export type { SectionFrame };
+
+it('takes page gap from CompiledStyle on mount and live style changes', async () => {
+  const { r } = await mount(2, undefined, { ...style(), pageGapPx: 32 });
+  expect(state.frames.geometry.gapPx).toBe(32);
+  await r.setStyle({ ...style(), pageGapPx: 64 });
+  expect(state.frames.geometry.gapPx).toBe(64);
+});

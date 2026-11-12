@@ -14,26 +14,25 @@ import { locatorViewportRect } from './locatorRect';
  * Own column pagination instead of foliate-js's paginator: foliate's iframes need `allow-scripts`
  * (PRD §10.4 step 2 forbids it) and its turns wait on animation/timers (ADR-004).
  *
- * Same API as FlowRenderer (ScrollRenderer), so ReaderView needs no special cases: page(±1) steps
- * one page; the smoothScroller's holdStart/holdEnd hooks bound a key press (one page per press in
- * paged + 1; continuous motion while held in the filmstrip); goToSectionEdge = first/last page(s)
- * of a section. Wheel and click zones (left/right thirds; paged flow only) are handled here.
+ * A page target (smoothScroller's PagedTarget, kind 'paged'): page(±1) steps one page; a key press
+ * is holdStart/holdMove/holdEnd (one page per press in paged + 1; continuous motion while held in
+ * the filmstrip, also across section boundaries); goToSectionEdge = first/last page(s) of a
+ * section. Wheel and click zones (left/right thirds; paged flow only) are handled here.
  */
 import type { Locator } from '@contract/types';
 import type { BookSource } from '../book/BookSource';
 import type { FrameClock } from '../input/scrollAnimation';
 import type { CompiledStyle } from '../style/types';
 import { forwardCtrlWheel, forwardKey } from './flow/eventForward';
-import { locatorAttempts, locatorOf, type Anchor, type LocatorBridge } from './flow/flowAnchor';
+import { isBookEnd, locatorAttempts, locatorOf, type Anchor, type LocatorBridge } from './flow/flowAnchor';
 import { clamp } from './flow/flowMath';
 import type { SectionFrame } from './flow/sectionFrame';
-import { pageGapOf, PinSet, prefersReducedMotion, RendererEmitter, resolveLink } from './grid/gridParts';
-import { DEFAULT_MIN_SPREAD_WIDTH_PX, effectivePages } from './grid/gridMath';
 import { columnOfTarget, firstVisibleInColumn } from './paged/pagedAnchor';
 import { PagedFrames } from './paged/pagedFrames';
-import { clickZone, WheelPager, type PagedGeometry } from './paged/pagedMath';
+import { clickZone, DEFAULT_MIN_SPREAD_WIDTH_PX, effectivePages, WheelPager, type PagedGeometry } from './paged/pagedMath';
 import { locateColumn, stripBounds, visibleSections, type StripBlock, type StripBounds } from './paged/stripMath';
 import { StripMotion } from './paged/stripMotion';
+import { PinSet, prefersReducedMotion, RendererEmitter, resolveLink } from './rendererParts';
 import type { GoToTarget, RelocateReason, Renderer, RendererEventMap, RendererEventName } from './Renderer';
 
 export { isForwardedEvent } from './flow/eventForward';
@@ -43,8 +42,6 @@ export interface PaginatorRendererOptions {
   pagesPerView?: 1 | 2;
   /** layout.minSpreadWidthPx (default 1000). */
   minSpreadWidthPx?: number;
-  /** layout.pageGap (px) when CompiledStyle has no `pageGapPx`. Default 48. */
-  pageGapPx?: number;
   locatorBridge?: LocatorBridge;
   keyTarget?: EventTarget;
   onExternalLink?: (href: string) => void;
@@ -72,8 +69,6 @@ export interface PaginatorDebugStats {
 type ColumnPick = (f: SectionFrame) => { column: number; range: Range | null } | null;
 
 const EMPTY: Locator = { sectionIndex: 0, cfi: null, charOffset: 0, globalCharOffset: null, progress: 0, snippet: '' };
-/** Paged + 1 without press hooks: two scrollBy turns closer than this are one gesture. */
-const SCROLL_TURN_GUARD_MS = 40;
 /** Filmstrip wheel: travel that starts a step, and the quiet time that ends a wheel gesture. */
 const WHEEL_START_PX = 40;
 const WHEEL_QUIET_MS = 160;
@@ -83,8 +78,6 @@ const WHEEL_QUIET_MS = 160;
  */
 const WHEEL_DISCRETE_GAP_MS = 40;
 const WHEEL_DISCRETE_MIN_PX = 20;
-/** Virtual scroll range for the smoothScroller in the filmstrip (it only checks the edges). */
-const VIRTUAL_TOP = 1e6;
 
 interface Hold {
   dir: 1 | -1;
@@ -92,11 +85,10 @@ interface Hold {
 }
 
 export class PaginatorRenderer implements Renderer {
-  /** Page-turning renderer: auto-scroll turns one page at a time (input/autoScroller.ts). */
-  readonly turnsPages = true;
+  /** Page target: held keys and auto-scroll turn pages (input/smoothScroller.ts, autoScroller.ts). */
+  readonly kind = 'paged' as const;
   #requested: 1 | 2;
   #minSpread: number;
-  #gapFallback: number;
   #opts: PaginatorRendererOptions;
   #book: BookSource | null = null;
   #style: CompiledStyle | null = null;
@@ -112,10 +104,7 @@ export class PaginatorRenderer implements Renderer {
   #navigating = 0;
   #section = -1;
   #lastKey = '';
-  #lastScrollTurn = -Infinity;
   #hold: Hold | null = null;
-  /** One-page-per-press hold (paged + 1, or reduced motion): scrollBy ignored until holdEnd. */
-  #pressHold = false;
   #wheelSum = 0;
   #wheelEnd = 0;
   #lastWheel = -Infinity;
@@ -134,7 +123,6 @@ export class PaginatorRenderer implements Renderer {
     this.#opts = o;
     this.#requested = o.pagesPerView === 2 ? 2 : 1;
     this.#minSpread = o.minSpreadWidthPx ?? DEFAULT_MIN_SPREAD_WIDTH_PX;
-    this.#gapFallback = o.pageGapPx ?? 48;
     this.#motion = new StripMotion(
       (x) => this.#apply(x),
       () => this.#settled(),
@@ -154,7 +142,7 @@ export class PaginatorRenderer implements Renderer {
     this.#sizes = book.sections.map((s) => Math.max(0, s.size || 0));
     const target = (): EventTarget => this.#opts.keyTarget ?? el;
     const colsFor = (w: number): 1 | 2 => effectivePages(this.#requested, w, this.#minSpread);
-    const frames = new PagedFrames(el, book, css, this.#gapOf(css), colsFor, {
+    const frames = new PagedFrames(el, book, css, css.pageGapPx, colsFor, {
       frame: {
         onKey: (e) => forwardKey(e, target()),
         onWheel: (e) => (e.ctrlKey ? forwardCtrlWheel(e, target()) : this.#onWheel(e)),
@@ -237,44 +225,39 @@ export class PaginatorRenderer implements Renderer {
   getLocator(): Locator {
     const frames = this.#frames;
     if (!frames || !this.#style || this.#base < 0) return { ...EMPTY };
-    return locatorOf(frames, this.#anchor(), this.#sizes, this.#opts.locatorBridge);
+    return locatorOf(frames, this.#anchor(), this.#sizes, this.#opts.locatorBridge, this.isAtEnd());
   }
 
   /**
-   * Held key travel. Filmstrip: inside a key hold, moves the strip continuously (it settles on a
-   * page at holdEnd); outside a hold it is ignored (the release glide). Paged + 1: one page per
-   * press (the press already turned it via holdStart; without hooks, one turn per gesture).
+   * Key press: one page now. True when the view then follows the held key (filmstrip with motion);
+   * paged + 1 and reduced motion turn one page per press.
    */
-  scrollBy(px: number): void {
-    if (!Number.isFinite(px) || px === 0 || this.#pressHold) return;
-    if (this.#filmstrip) {
-      const h = this.#hold;
-      if (h?.source === 'key' && Math.sign(px) === h.dir) this.#drive(px);
-      return;
-    }
-    const now = performance.now();
-    if (now - this.#lastScrollTurn < SCROLL_TURN_GUARD_MS) return;
-    this.#lastScrollTurn = now;
-    this.page(px > 0 ? 1 : -1);
-  }
-
-  /** smoothScroller key press: one page now; the filmstrip then follows the held key. */
-  holdStart(direction: 1 | -1): void {
-    if (!this.#frames) return;
+  holdStart(direction: 1 | -1): boolean {
+    if (!this.#frames) return false;
     if (!this.#filmstrip || this.#reduced()) {
-      this.#pressHold = true;
       this.page(direction);
-      return;
+      return false;
     }
     this.#endWheel();
     this.#endHold();
     this.#hold = { dir: direction, source: 'key' };
     this.#step(direction);
+    return true;
   }
 
-  /** smoothScroller: the held motion stopped (release, edge, focus loss): settle on a page. */
+  /** Continuous travel of a held key (filmstrip). False once the book edge is reached. */
+  holdMove(px: number): boolean {
+    const h = this.#hold;
+    if (h?.source !== 'key') return false;
+    if (Number.isFinite(px) && Math.sign(px) === h.dir) this.#drive(px);
+    const b = this.#bounds();
+    if (!b) return true;
+    const rest = this.#restColumn(b);
+    return h.dir > 0 ? !(b.atBookEnd && rest >= b.max) : !(b.atBookStart && rest <= b.min);
+  }
+
+  /** The held key was released (or motion stopped: edge, focus loss): settle on a page. */
   holdEnd(): void {
-    this.#pressHold = false;
     if (this.#hold?.source === 'key') this.#endHold();
   }
 
@@ -324,28 +307,10 @@ export class PaginatorRenderer implements Renderer {
     this.#book = null;
   }
 
-  // ───────────── ScrollRenderer extras (ReaderView, smoothScroller, key router) ─────────────
+  // ───────────── PagedRenderer extras (reader session, key router) ─────────────
 
   get scrollElement(): HTMLElement | null {
     return this.#frames?.root ?? null;
-  }
-  /**
-   * No scroll position. Paged + 1: 0 / 0, so the smoothScroller stops after its first frame (one
-   * page per press). Filmstrip: a virtual range whose edges are the book's edges, so a held key
-   * keeps driving the strip until the book starts/ends.
-   */
-  getScrollTop(): number {
-    const b = this.#filmstrip ? this.#bounds() : null;
-    if (!b) return 0;
-    return b.atBookStart && this.#restColumn(b) <= b.min ? 0 : VIRTUAL_TOP;
-  }
-  setScrollTop(px: number): void {
-    void px;
-  }
-  getMaxScroll(): number {
-    const b = this.#filmstrip ? this.#bounds() : null;
-    if (!b) return 0;
-    return b.atBookEnd && this.#restColumn(b) >= b.max ? this.getScrollTop() : 2 * VIRTUAL_TOP;
   }
   getViewportHeight(): number {
     return this.#frames?.root.clientHeight ?? 0;
@@ -359,23 +324,22 @@ export class PaginatorRenderer implements Renderer {
   getSectionIndex(): number {
     return Math.max(0, this.#section);
   }
-  setPageOverlapLines(n: number): void {
-    void n;
-  }
-  /**
-   * No-op: a step always ends on a page and a new step finishes the running one (lag cap), so
-   * there is nothing to cancel (ReaderView calls this on every arrow press and release).
-   */
-  cancelScrollAnimation = (): void => {};
   /** Home/End: first/last page(s) of the section; Ctrl+Home/End: of the first/last section. */
-  async goToSectionEdge(index: number, edge: 'start' | 'end'): Promise<void> {
+  goToSectionEdge(index: number, edge: 'start' | 'end'): Promise<void> {
+    return this.#goToEdge(index, edge, 'goto');
+  }
+  async #goToEdge(index: number, edge: 'start' | 'end', reason: RelocateReason): Promise<void> {
     const n = this.sectionCount;
     if (n === 0) return;
     const i = clamp(Math.floor(index), 0, n - 1);
-    await this.#navigate(i, (f) => ({
-      column: edge === 'start' ? 0 : Math.max(0, (this.#frames?.columns(f.index) ?? 1) - this.#cols()),
-      range: null,
-    }));
+    await this.#navigate(
+      i,
+      (f) => ({
+        column: edge === 'start' ? 0 : Math.max(0, (this.#frames?.columns(f.index) ?? 1) - this.#cols()),
+        range: null,
+      }),
+      reason,
+    );
   }
   /** Pages per view actually shown: the request, or 1 below layout.minSpreadWidthPx. */
   getEffectivePagesPerView(): 1 | 2 {
@@ -408,7 +372,6 @@ export class PaginatorRenderer implements Renderer {
 
   // ───────────── Internals ─────────────
 
-  #gapOf = (css: CompiledStyle): number => pageGapOf(css, this.#gapFallback);
   #g = (): PagedGeometry => this.#frames!.geometry;
   #cols = (): 1 | 2 => this.#frames?.geometry.cols ?? 1;
   #pitch = (): number => Math.max(1, this.#frames?.geometry.pitch ?? 1);
@@ -560,7 +523,7 @@ export class PaginatorRenderer implements Renderer {
     const hold = this.#hold;
     this.#hold = null;
     this.#motion.stop();
-    frames.applyStyle(style, this.#gapOf(style));
+    frames.applyStyle(style, style.pageGapPx);
     const cols = frames.geometry.cols;
     if (cols !== this.#shownPages) {
       this.#shownPages = cols;
@@ -593,7 +556,7 @@ export class PaginatorRenderer implements Renderer {
     if (!frames || !this.#style || this.#base < 0) return;
     const a = this.#anchor();
     this.#viewAnchor = a.range ? { index: a.index, range: a.range } : null;
-    const locator = locatorOf(frames, a, this.#sizes, this.#opts.locatorBridge);
+    const locator = locatorOf(frames, a, this.#sizes, this.#opts.locatorBridge, this.isAtEnd());
     const key = `${locator.sectionIndex}:${locator.charOffset}:${this.#base}:${Math.round(this.#motion.target)}`;
     // A step that did not move (book edge) or a resize that kept the page is not a new position.
     if ((reason === 'resize' || reason === 'scroll') && key === this.#lastKey) return;
@@ -614,6 +577,10 @@ export class PaginatorRenderer implements Renderer {
   }
 
   async #goToLocator(loc: Locator, reason: RelocateReason): Promise<boolean> {
+    if (isBookEnd(loc) && this.sectionCount > 0) {
+      await this.#goToEdge(this.sectionCount - 1, 'end', reason);
+      return true;
+    }
     for (const attempt of locatorAttempts(loc, this.#sizes, this.#opts.locatorBridge)) {
       const a = attempt();
       if (!a || !(a[0] >= 0 && a[0] < this.sectionCount)) continue;
@@ -632,7 +599,10 @@ export class PaginatorRenderer implements Renderer {
     return false;
   }
 
-  /** Mount `index` (pinned meanwhile), then show the picked page instantly. 'stale' = superseded. */
+  /**
+   * Mount `index` (pinned meanwhile), then show the picked page instantly. 'stale' = superseded.
+   * A step across an unloaded section boundary ('scroll') keeps a held key going from the new page.
+   */
   async #navigate(index: number, pick: ColumnPick, reason: RelocateReason = 'goto'): Promise<boolean | 'stale'> {
     const frames = this.#frames;
     if (!frames) return false;
@@ -646,8 +616,10 @@ export class PaginatorRenderer implements Renderer {
       const p = pick(f);
       if (!p) return false;
       this.#sticky = p.range ? { index, range: p.range } : null;
+      const hold = reason === 'scroll' && this.#hold?.source === 'key' ? this.#hold : null;
       this.#place(index, p.column);
-      this.#emitRelocate(reason);
+      this.#hold = hold;
+      if (!hold) this.#emitRelocate(reason);
       return true;
     } finally {
       this.#navigating--;

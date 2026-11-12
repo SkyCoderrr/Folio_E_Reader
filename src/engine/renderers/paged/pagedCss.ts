@@ -5,7 +5,7 @@
  * exactly textW × textH per view, overflow columns continuing to the right at a constant pitch.
  *
  * The root width is fixed in CSS (not taken from the iframe), so widening the iframe to hold every
- * column never changes the column width. Same specificity scheme as grid/gridCss.ts: `:root:root`
+ * column never changes the column width. Specificity scheme: `:root:root`
  * (0,2,0) beats compileStyle's `html, body, body * { column-count: 1 !important }` (0,0,1), which
  * still keeps every descendant single-column. One page therefore stays ONE text column at every
  * window width (LM-03, verified at 3440 px in PaginatorRenderer.test.ts).

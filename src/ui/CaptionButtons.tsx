@@ -56,12 +56,19 @@ export function CaptionButtons({ windowState, active = true, onClose }: Props) {
     sender.push(rects);
   };
 
+  const reportRef = useRef(report);
+  useLayoutEffect(() => {
+    reportRef.current = report;
+  });
+
   // Mount, activation, DPI / maximize / visibility changes.
   useLayoutEffect(report, [active, visible, scale, maximized]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Layout changes: viewport resize and bar resizes.
+  // Layout changes: viewport resize and bar resizes. Set up once (#1): re-creating the observer on
+  // every render re-reported (and re-sent) the rects on every reader render. Rust still clears the
+  // rects itself on resize/DPI/hide and waits for this report, so nothing is de-duplicated here.
   useEffect(() => {
-    const onResize = () => report();
+    const onResize = () => reportRef.current();
     window.addEventListener('resize', onResize);
     // Absent in jsdom (tests); always present in WebView2.
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onResize);
@@ -71,7 +78,7 @@ export function CaptionButtons({ windowState, active = true, onClose }: Props) {
       window.removeEventListener('resize', onResize);
       ro?.disconnect();
     };
-  }); // re-bind each render so `report` closes over current props
+  }, []);
 
   // Unmount (e.g. fullscreen swaps in "Exit full screen"): disable hit-testing.
   useEffect(() => () => sender.push(null), [sender]);

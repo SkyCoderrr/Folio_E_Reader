@@ -13,3 +13,8 @@ commands.allow = ["chapters_read_get"]
 identifier = "allow-chapter-mark-read"
 description = "Persist a read chapter for a book."
 commands.allow = ["chapter_mark_read"]
+
+[[permission]]
+identifier = "allow-book-set-section-chars"
+description = "Persist measured EPUB section characters and TOC offsets."
+commands.allow = ["book_set_section_chars"]

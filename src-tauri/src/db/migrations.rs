@@ -3,11 +3,12 @@ use crate::contract::{AppError, ErrorCode};
 use rusqlite::{Connection, OpenFlags, backup::Backup};
 use std::{path::Path, time::Duration};
 
-pub const VERSION: i64 = 2;
+pub const VERSION: i64 = 3;
 // Immutable, numbered migration; do not embed the latest contract snapshot here.
 const MIGRATIONS: &[&str] = &[
     include_str!("001_initial.sql"),
     include_str!("002_chapter_read.sql"),
+    include_str!("003_epub_section_chars.sql"),
 ];
 
 pub fn open(path: &Path) -> Result<Connection, AppError> {

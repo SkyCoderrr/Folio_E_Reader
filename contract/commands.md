@@ -1,4 +1,4 @@
-# Commands, UI → backend (contract v0.8.0)
+# Commands, UI → backend (contract v0.9.0)
 
 Types are in [`types.ts`](types.ts) (TS) and [`rust-types.md`](rust-types.md) (Rust). Errors are in [`errors.md`](errors.md), events in [`events.md`](events.md). Every M0–M8 command has an example file `examples/<command>.json` (`{ "args": …, "result": … }`) that the UI's IPC mock harness and Codex's contract tests both use. The inline examples below are identical to those files.
 
@@ -8,6 +8,7 @@ Types are in [`types.ts`](types.ts) (TS) and [`rust-types.md`](rust-types.md) (R
 
 | Command | M | Status | Chunk | Stories |
 | --- | --- | --- | --- | --- |
+| `book_set_section_chars` | M8 | stable | G8 | EPUB measurements |
 | `app_info` | M0 | stable | M0.1, M0.2 | §12.5 |
 | `app_quit` | M0 | stable | M0.6 | NAV-01 |
 | `window_get_state` | M0 | stable | M0.6 | WIN-06 |
@@ -48,7 +49,7 @@ Types are in [`types.ts`](types.ts) (TS) and [`rust-types.md`](rust-types.md) (R
 | `stats_query` | M8 | stable | M8.1a | ST-03…05 |
 | `book_set_total_chars` | M8 | stable | M8.1b | ST-01, ST-05 |
 
-Count: M0 8 · M1 3 · M2 4 · M3 8 · M4 3 · M5 5 · M7 5 · M8 3 = **39**.
+Count: M0 8 · M1 3 · M2 4 · M3 8 · M4 3 · M5 5 · M7 5 · M8 4 = **40**.
 
 ## General rules
 
@@ -100,7 +101,7 @@ Example (`examples/app_info.json`):
   "args": {},
   "result": {
     "appVersion": "0.1.0",
-    "contractVersion": "0.8.0",
+    "contractVersion": "0.9.0",
     "profileDir": "C:\\Users\\dany\\AppData\\Local\\Temp\\e_reader_test\\run-01",
     "libraryDir": "C:\\Users\\dany\\AppData\\Local\\Temp\\e_reader_test\\run-01\\library",
     "libraryOffline": false,
@@ -430,7 +431,7 @@ Example (`examples/library_remove.json`):
 ```
 
 ### `book_open` · M3 · stable
-- **Args:** `{ bookId }`. **Returns:** `BookOpenResult { book, locator, txtPrefs }`.
+- **Args:** `{ bookId }`. **Returns:** `BookOpenResult { book, locator, txtPrefs, epubMetrics, statsSeed }`.
 - **Errors, checked in this order:** `INVALID_ARGUMENT` → `DB_ERROR` / `DB_VERSION_UNSUPPORTED` availability gate → `BOOK_NOT_FOUND` → `BOOK_FILE_MISSING` → EPUB revalidation (`EPUB_INVALID`) → `BOOK_DRM_PROTECTED` → `BOOK_FIXED_LAYOUT` → transactional updates (which can also return `DB_ERROR`).
 - **Revalidation:** at least detect size/mtime changes in library copies and reparse changed EPUBs before checking restrictions. Internal `meta_json.restrictions: {drm:boolean,fixedLayout:boolean}` can hold both; check DRM first. Only a successful open updates lastOpenedAt or creates default TXT prefs.
 - **Side effects (only on success):** `books.last_opened_at` = now. The returned `book` already contains the new `lastOpenedAt`.
@@ -440,7 +441,9 @@ Example (`examples/library_remove.json`):
 Example (`examples/book_open.json`):
 ```json
 {
-  "args": { "bookId": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d" },
+  "args": {
+    "bookId": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d"
+  },
   "result": {
     "book": {
       "id": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d",
@@ -467,7 +470,22 @@ Example (`examples/book_open.json`):
       "progress": 0.1834,
       "snippet": "It was the best of times, it was"
     },
-    "txtPrefs": null
+    "txtPrefs": null,
+    "epubMetrics": {
+      "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sectionChars": [
+        100,
+        200
+      ],
+      "tocFragmentOffsets": {
+        "chapter.xhtml#start": 20
+      }
+    },
+    "statsSeed": {
+      "activeMs": 300000,
+      "chars": 1500,
+      "charsPerMin": 300
+    }
   }
 }
 ```
@@ -906,6 +924,33 @@ Example (`examples/book_set_total_chars.json`):
   "args": {
     "bookId": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d",
     "totalChars": 15000
+  },
+  "result": null
+}
+```
+
+### `book_set_section_chars` · M8 · stable
+- **Args:** `BookSetSectionCharsArgs { bookId, metrics }`. EPUB only. Full BLAKE3 hash (64 lowercase hex); 1..100000 section counts, each null or a nonnegative safe integer, safe total; fragment href keys 1..4096 UTF-8 bytes and safe nonnegative offsets. The hash must still match the managed file, otherwise INVALID_ARGUMENT; no stale cache is written.
+- **Result:** null. **Errors:** `INVALID_ARGUMENT`, `BOOK_NOT_FOUND`, `BOOK_FILE_MISSING`, `IO_ERROR`, plus common DB errors.
+- Atomically replaces the per-book cache and total_chars (null for partial counts). No position/progress change. Removal cascades to the cache.
+- `book_open.epubMetrics` is null for TXT; for EPUB it returns a matching cache or the current hash with empty sectionChars and offsets on a miss. Counts use the renderer's UTF-16 body-text definition. Failed sections remain null and are retried individually; successful measurements survive. A changed file hash invalidates all measurements. Cold measurement completes before the first renderer mount so progress never changes from bytes to characters within a reading session.
+- `book_open.statsSeed` contains lifetime activeMs/chars for this book only, plus charsPerMin over its latest 30 active minutes (proportionally clipped oldest interval), null before 5 active minutes. No sessions yields zeros/null. It uses the same speed calculation as stats_query.
+
+Example (`examples/book_set_section_chars.json`):
+```json
+{
+  "args": {
+    "bookId": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d",
+    "metrics": {
+      "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sectionChars": [
+        100,
+        200
+      ],
+      "tocFragmentOffsets": {
+        "chapter.xhtml#start": 20
+      }
+    }
   },
   "result": null
 }

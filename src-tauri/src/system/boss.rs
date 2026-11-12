@@ -1,6 +1,8 @@
-use crate::{contract::*, settings::LoadedSettings, storage::io_error};
+use crate::contract::*;
+#[cfg(test)]
+use crate::storage::io_error;
 use std::sync::{
-    Mutex,
+    Arc,
     atomic::{AtomicU32, Ordering},
 };
 use tauri::{AppHandle, Emitter, Manager};
@@ -133,24 +135,24 @@ impl Registrar for NativeRegistrar<'_> {
 }
 
 pub struct Boss {
-    status: Mutex<BossKeyStatus>,
+    status: crate::storage::SnapshotStore<BossKeyStatus>,
     // Never take the setter/settings locks from the UI-thread hotkey callback.
-    active: AtomicU32,
+    active: Arc<AtomicU32>,
 }
 impl Boss {
     pub fn new(settings: &BossKeySettings) -> Self {
         Self {
-            status: Mutex::new(BossKeyStatus {
+            status: crate::storage::SnapshotStore::new(BossKeyStatus {
                 enabled: settings.enabled,
                 shortcut: settings.shortcut.clone(),
                 registered: false,
                 error: None,
             }),
-            active: AtomicU32::new(0),
+            active: Arc::new(AtomicU32::new(0)),
         }
     }
     pub fn status(&self) -> Result<BossKeyStatus, AppError> {
-        self.status.lock().map(|s| s.clone()).map_err(io_error)
+        self.status.snapshot()
     }
     pub fn accepts(
         &self,
@@ -160,35 +162,20 @@ impl Boss {
         state == tauri_plugin_global_shortcut::ShortcutState::Pressed
             && self.active.load(Ordering::Acquire) == shortcut.id()
     }
+    #[cfg(test)]
     fn activate(&self, status: &BossKeyStatus) {
-        self.active.store(
-            if status.enabled && status.registered {
-                parse(&status.shortcut).map(|s| s.id()).unwrap_or(0)
-            } else {
-                0
-            },
-            Ordering::Release,
-        );
+        activate(&self.active, status);
     }
     pub fn startup(&self, app: &AppHandle) {
-        let mut status = self.status.lock().unwrap_or_else(|e| e.into_inner());
-        if status.enabled {
-            match NativeRegistrar(app).register(&status.shortcut) {
-                Ok(()) => status.registered = true,
-                Err(error) => {
-                    log::warn!("boss registration: {error}");
-                    status.error = Some(error.clone());
-                    let _ = app.emit(
-                        event::BOSS_REGISTER_FAILED,
-                        BossRegisterFailedPayload {
-                            shortcut: status.shortcut.clone(),
-                            error,
-                        },
-                    );
-                }
-            }
+        let app = app.clone();
+        let active = self.active.clone();
+        if let Err(error) = self.status.update(move |status| {
+            register_startup(&app, status);
+            activate(&active, status);
+            Ok(())
+        }) {
+            log::error!("boss startup: {error}");
         }
-        self.activate(&status);
     }
     pub fn change(
         &self,
@@ -196,48 +183,85 @@ impl Boss {
         enabled: Option<bool>,
         shortcut: Option<String>,
     ) -> Result<BossKeyStatus, AppError> {
-        let mut status = self.status.lock().map_err(io_error)?;
-        let state = app.state::<crate::AppState>();
-        let target = BossKeySettings {
-            enabled: enabled.unwrap_or(status.enabled),
-            shortcut: shortcut.unwrap_or_else(|| status.shortcut.clone()),
-        };
-        let mut changed = None;
-        let result = transition(&mut status, target, &mut NativeRegistrar(app), |value| {
-            let mut settings = state.settings.lock().map_err(io_error)?;
-            let mut candidate = LoadedSettings {
-                effective: settings.effective.clone(),
-                raw: settings.raw.clone(),
-                library_dir: settings.library_dir.clone(),
-            };
-            candidate.effective.boss_key = value.clone();
-            candidate.write(&state.profile.settings)?;
-            changed = Some(candidate.effective.clone());
-            *settings = candidate;
-            Ok(())
-        });
-        self.activate(&status);
-        if let Err(error) = &result {
-            if error.code == ErrorCode::Internal {
+        let app = app.clone();
+        let active = self.active.clone();
+        // Publish the actual registration state even if persistence/rollback fails.
+        self.status
+            .update(move |status| Ok(change_status(&app, &active, status, enabled, shortcut)))?
+    }
+}
+fn activate(active: &AtomicU32, status: &BossKeyStatus) {
+    active.store(
+        if status.enabled && status.registered {
+            parse(&status.shortcut).map(|s| s.id()).unwrap_or(0)
+        } else {
+            0
+        },
+        Ordering::Release,
+    );
+}
+fn register_startup(app: &AppHandle, status: &mut BossKeyStatus) {
+    if status.enabled {
+        match NativeRegistrar(app).register(&status.shortcut) {
+            Ok(()) => status.registered = true,
+            Err(error) => {
+                log::warn!("boss registration: {error}");
+                status.error = Some(error.clone());
                 let _ = app.emit(
                     event::BOSS_REGISTER_FAILED,
                     BossRegisterFailedPayload {
                         shortcut: status.shortcut.clone(),
-                        error: error.clone(),
+                        error,
                     },
                 );
             }
-        } else if let Some(settings) = changed {
+        }
+    }
+}
+fn change_status(
+    app: &AppHandle,
+    active: &AtomicU32,
+    status: &mut BossKeyStatus,
+    enabled: Option<bool>,
+    shortcut: Option<String>,
+) -> Result<BossKeyStatus, AppError> {
+    let state = app.state::<crate::AppState>();
+    let target = BossKeySettings {
+        enabled: enabled.unwrap_or(status.enabled),
+        shortcut: shortcut.unwrap_or_else(|| status.shortcut.clone()),
+    };
+    let mut changed = None;
+    let result = transition(status, target, &mut NativeRegistrar(app), |value| {
+        let value = value.clone();
+        let path = state.profile.settings.clone();
+        changed = Some(state.settings.update(move |candidate| {
+            candidate.effective.boss_key = value;
+            candidate.write(&path)?;
+            Ok(candidate.effective.clone())
+        })?);
+        Ok(())
+    });
+    activate(active, status);
+    if let Err(error) = &result {
+        if error.code == ErrorCode::Internal {
             let _ = app.emit(
-                event::SETTINGS_CHANGED,
-                SettingsChangedPayload {
-                    settings,
-                    cause: SettingsChangedCause::BossKey,
+                event::BOSS_REGISTER_FAILED,
+                BossRegisterFailedPayload {
+                    shortcut: status.shortcut.clone(),
+                    error: error.clone(),
                 },
             );
         }
-        result
+    } else if let Some(settings) = changed {
+        let _ = app.emit(
+            event::SETTINGS_CHANGED,
+            SettingsChangedPayload {
+                settings,
+                cause: SettingsChangedCause::BossKey,
+            },
+        );
     }
+    result
 }
 
 pub fn transition(
@@ -606,5 +630,44 @@ mod tests {
         assert!(boss.accepts(&chord, Pressed));
         assert!(!boss.accepts(&chord, Released));
         assert!(!boss.accepts(&parse("Ctrl+Alt+R").unwrap(), Pressed));
+    }
+    #[test]
+    fn status_and_hotkey_callback_do_not_wait_for_a_pending_settings_write() {
+        use tauri_plugin_global_shortcut::ShortcutState::Pressed;
+        let (status, _) = fixture();
+        let boss = Arc::new(Boss::new(&target(true, "Ctrl+Alt+B")));
+        boss.activate(&status);
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let changing = boss.clone();
+        let writer = std::thread::spawn(move || {
+            changing
+                .status
+                .update(move |_| {
+                    entered_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                    Ok(())
+                })
+                .unwrap()
+        });
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        let reading = boss.clone();
+        let (read_tx, read_rx) = std::sync::mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            assert!(reading.accepts(&parse("Ctrl+Alt+B").unwrap(), Pressed));
+            read_tx.send(reading.status()).unwrap();
+        });
+        let result = read_rx.recv_timeout(std::time::Duration::from_millis(1200));
+        release_tx.send(()).unwrap();
+        writer.join().unwrap();
+        reader.join().unwrap();
+        assert!(
+            result
+                .expect("boss status waited for settings persistence")
+                .unwrap()
+                .enabled
+        );
     }
 }

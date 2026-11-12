@@ -1,15 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import type { TocItem } from '../../engine/book/BookSource';
-import {
-  ancestorsOf,
-  buildTocSpans,
-  classifyToc,
-  defaultExpanded,
-  flattenToc,
-  type TocBookInfo,
-  type TocPosition,
-} from './tocModel';
+import { ancestorsOf, defaultExpanded, flattenToc, type TocReading, type TocSpan } from './tocModel';
 import styles from './toc.module.css';
 
 export interface BookmarkRowData {
@@ -26,17 +18,15 @@ export interface TocSidebarProps {
   tab: 'contents' | 'bookmarks';
   onTabChange: (tab: 'contents' | 'bookmarks') => void;
   toc: TocItem[];
-  currentHref: string | null;
-  /** t24u: spine data + live position -> read / current / unread styling and in-chapter %. */
-  tocBook?: TocBookInfo | null;
-  position?: TocPosition | null;
+  /** t24u: entry spans (chapter keys) and the reader's one current-chapter reading (#14). */
+  spans: readonly TocSpan[];
+  reading: TocReading;
   /** t29u: persisted chapterKeys of every chapter the reader has been in (visit memory). */
   readKeys?: ReadonlySet<string>;
   onNavigate: (href: string) => void;
-  bookmarks: BookmarkRowData[];
+  bookmarks: readonly BookmarkRowData[];
   onBookmarkOpen: (id: string) => void;
   onBookmarkDelete: (id: string) => void;
-  onClose: () => void;
   /**
    * NAV-02.1: `overlay` (< 1280 px) floats over the text; `push` (>= 1280 px) expects the host to
    * shift the text column by `--sidebar-width` (300 px, defined in tokens.css). Default: overlay.
@@ -68,7 +58,8 @@ export function bookmarkDate(iso: string, now: number = Date.now(), locale?: str
 
 const pct = (p: number) => `${Math.round(Math.min(1, Math.max(0, p)) * 100)}%`;
 
-export function TocSidebar(p: TocSidebarProps) {
+/** Memoised; its tab content is rendered only while open (N3). Escape: the overlay store (#13). */
+export const TocSidebar = memo(function TocSidebar(p: TocSidebarProps) {
   const { open, tab } = p;
   return (
     <aside
@@ -79,12 +70,6 @@ export function TocSidebar(p: TocSidebarProps) {
       aria-label="Contents"
       aria-hidden={!open}
       inert={!open}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          e.stopPropagation();
-          p.onClose();
-        }
-      }}
     >
       <div className={styles.tabs} role="tablist" aria-label="Sidebar">
         {(['contents', 'bookmarks'] as const).map((t) => (
@@ -117,11 +102,11 @@ export function TocSidebar(p: TocSidebarProps) {
         id={`toc-panel-${tab}`}
         aria-labelledby={`toc-tab-${tab}`}
       >
-        {tab === 'contents' ? <Contents {...p} /> : <Bookmarks {...p} />}
+        {!open ? null : tab === 'contents' ? <Contents {...p} /> : <Bookmarks {...p} />}
       </div>
     </aside>
   );
-}
+});
 
 function reveal(toc: TocItem[], href: string | null, base: Set<string>): Set<string> {
   const anc = ancestorsOf(toc, href);
@@ -130,22 +115,9 @@ function reveal(toc: TocItem[], href: string | null, base: Set<string>): Set<str
 
 const NO_KEYS: ReadonlySet<string> = new Set();
 
-function Contents({
-  toc,
-  currentHref: hrefProp,
-  tocBook,
-  position,
-  readKeys = NO_KEYS,
-  onNavigate,
-  open,
-}: TocSidebarProps) {
-  const spans = useMemo(() => (tocBook ? buildTocSpans(toc, tocBook) : []), [toc, tocBook]);
-  const reading = useMemo(
-    () => classifyToc(spans, position),
-    [spans, position?.sectionIndex, position?.progress, position?.charOffset], // eslint-disable-line react-hooks/exhaustive-deps
-  );
+function Contents({ toc, spans, reading, readKeys = NO_KEYS, onNavigate, open }: TocSidebarProps) {
   const chapterKeys = useMemo(() => new Map(spans.map((sp) => [sp.key, sp.chapterKey])), [spans]);
-  const currentHref = reading.currentHref ?? hrefProp;
+  const currentHref = reading.currentHref;
   const [exp, setExp] = useState(() => ({
     toc,
     href: currentHref,
@@ -166,13 +138,8 @@ function Contents({
   const rows = useMemo(() => flattenToc(toc, expanded), [toc, expanded]);
   // t32u: while the entries of the reader's section cannot be told apart yet (fragment offsets still
   // being measured) no row is current: the section-level href would name the wrong chapter.
-  const currentKey = reading.unsure
-    ? null
-    : ((reading.currentKey && rows.some((r) => r.key === reading.currentKey)
-        ? reading.currentKey
-        : null) ??
-      rows.find((r) => r.href === currentHref)?.key ??
-      null);
+  const currentKey =
+    reading.currentKey && rows.some((r) => r.key === reading.currentKey) ? reading.currentKey : null;
   const focusKey =
     active && rows.some((r) => r.key === active) ? active : (currentKey ?? rows[0]?.key ?? null);
 

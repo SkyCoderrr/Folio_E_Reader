@@ -20,7 +20,6 @@ it('offers Scroll/Paged and labels the effective narrow-window fallback without 
   const render = (effective: 1 | 2) =>
     root.render(
       <ReaderChrome
-        keyboardPin={false}
         layout={{
           pagesPerView: 2,
           effectivePagesPerView: effective,

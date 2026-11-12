@@ -1,5 +1,6 @@
+import { errorCopy } from '../../ipc/errorCopy';
 import { useState } from 'react';
-import type { KeyboardEvent, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
 import type { Preset } from '@contract/types';
 import {
@@ -86,20 +87,27 @@ function PresetNameDialog({
   initial,
   onClose,
   onSubmit,
+  exceptId,
 }: {
   title: string;
   initial: string;
   onClose: () => void;
   onSubmit: (name: string) => void;
+  exceptId?: string;
 }) {
+  const presets = useSettings((s) => s.presetsList);
   const [name, setName] = useState(initial);
   const [error, setError] = useState('');
   const submit = () => {
+    const value = name.trim();
+    if (!value) return setError('Enter a name');
+    if (presets.some((p) => p.id !== exceptId && p.name.toLowerCase() === value.toLowerCase()))
+      return setError('A preset with this name already exists');
     try {
-      onSubmit(name);
+      onSubmit(value);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorCopy(e));
     }
   };
   return (
@@ -215,6 +223,7 @@ function Presets() {
         <PresetNameDialog
           title="Rename Preset"
           initial={renaming.name}
+          exceptId={renaming.id}
           onClose={() => setRenaming(null)}
           onSubmit={(n) => api().renamePreset(renaming.id, n)}
         />
@@ -289,12 +298,6 @@ function MaxWidth() {
 /** Right-hand Appearance panel (PRD 6.7). Stays mounted so it can slide out. */
 export function AppearancePanel({ open, instant = false, onClose }: Props) {
   const indentMode = useStyleValue<string>('text.indentMode');
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && !e.defaultPrevented) {
-      e.stopPropagation();
-      onClose();
-    }
-  };
   return (
     <aside
       className={styles.panel}
@@ -303,7 +306,6 @@ export function AppearancePanel({ open, instant = false, onClose }: Props) {
       aria-label="Appearance"
       aria-hidden={!open}
       inert={!open}
-      onKeyDown={onKeyDown}
     >
       <header className={styles.header}>
         <h2 className={styles.title}>Appearance</h2>

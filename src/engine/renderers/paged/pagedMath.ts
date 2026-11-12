@@ -12,7 +12,101 @@
  * stripMath.ts) and the view shows `cols` consecutive columns. A page turn moves the strip by one
  * pitch with a short transform-only ease-out; two pages per view advance ONE page per step.
  */
-import { gridGeometry, type GridGeometry } from '../grid/gridMath';
+import { MIN_COLUMN_PX } from '../flow/flowMath';
+
+/** Two pages (or one) side by side across the viewport: the spread the filmstrip shows. */
+export interface SpreadInput {
+  viewportW: number;
+  viewportH: number;
+  /** layout.pageGap: desk gutter between the two pages. */
+  gapPx: number;
+  marginXPx: number;
+  marginYPx: number;
+  /** null = fill the page. */
+  maxLineWidthPx: number | null;
+  /**
+   * Pages per row: 2 (default), or 1 for the narrow-window fallback (viewport narrower than
+   * layout.minSpreadWidthPx): one page as wide as the viewport per row.
+   */
+  cols?: 1 | 2;
+}
+
+export interface SpreadGeometry {
+  /** Pages (text columns) per row: 2, or 1 in the narrow-window fallback. */
+  cols: 1 | 2;
+  /** Row pitch = page height = viewport height (integer px). */
+  rowH: number;
+  /** Fixed page height; row pitch additionally includes the desk gap. */
+  pageH: number;
+  pageW: number;
+  gapPx: number;
+  /** x of the left page's left edge in the scroller (centres the spread when W − gap is odd). */
+  spreadLeft: number;
+  /** Text column width inside each page (= multicol column width). */
+  textW: number;
+  /** Horizontal inset of the text column inside its page. */
+  pageInset: number;
+  /** Space between the two text columns = right inset + gap + left inset. */
+  colGap: number;
+  /** Vertical page margin, clamped so at least one line's worth of text height remains. */
+  marginY: number;
+  /** Text height of one page (= multicol column-height). */
+  textH: number;
+  /** Section iframe: x in the scroller, and width (both text columns plus the gutter). */
+  frameLeft: number;
+  frameW: number;
+}
+
+/** Smallest text height we lay out; below this the vertical margins shrink. */
+export const MIN_TEXT_H = 48;
+
+export function spreadGeometry(i: SpreadInput): SpreadGeometry {
+  const W = Math.max(0, Math.floor(i.viewportW));
+  const pageH = Math.max(1, Math.floor(i.viewportH));
+  const cols = i.cols === 1 ? 1 : 2;
+  const gapPx = Math.max(0, Math.round(i.gapPx));
+  const rowH = pageH + gapPx;
+  const pageW = cols === 2 ? Math.max(1, Math.floor((W - gapPx) / 2)) : Math.max(1, W);
+  const spreadW = cols === 2 ? 2 * pageW + gapPx : pageW;
+  const spreadLeft = Math.max(0, Math.floor((W - spreadW) / 2));
+  const avail = Math.max(0, pageW - 2 * Math.max(0, i.marginXPx));
+  const capped = i.maxLineWidthPx && i.maxLineWidthPx > 0 ? Math.min(avail, i.maxLineWidthPx) : avail;
+  const textW = Math.floor(Math.min(pageW, Math.max(Math.min(pageW, MIN_COLUMN_PX), capped)));
+  const pageInset = Math.floor((pageW - textW) / 2);
+  const colGap = cols === 2 ? pageW - textW + gapPx : 0;
+  const maxMarginY = Math.max(0, Math.floor((pageH - Math.min(pageH, MIN_TEXT_H)) / 2));
+  const marginY = Math.min(Math.max(0, Math.round(i.marginYPx)), maxMarginY);
+  const textH = pageH - 2 * marginY;
+  return {
+    cols,
+    rowH,
+    pageH,
+    pageW,
+    gapPx,
+    spreadLeft,
+    textW,
+    pageInset,
+    colGap,
+    marginY,
+    textH,
+    frameLeft: spreadLeft + pageInset,
+    frameW: cols * textW + (cols - 1) * colGap,
+  };
+}
+
+/**
+ * Narrow-window fallback (FR-LM-3, LM-04, LM-07): a requested two-page layout shows one page while
+ * the reader viewport is narrower than layout.minSpreadWidthPx, and two again once it is wide
+ * enough. Never returns 2 for a one-page request (two pages is opt-in only, FR-LM-0).
+ */
+export function effectivePages(requested: 1 | 2, viewportW: number, minSpreadWidthPx: number): 1 | 2 {
+  if (requested !== 2) return 1;
+  return viewportW >= Math.max(0, minSpreadWidthPx) ? 2 : 1;
+}
+
+/** settings layout.minSpreadWidthPx default (PRD §8.2). */
+export const DEFAULT_MIN_SPREAD_WIDTH_PX = 1000;
+
 
 export interface PagedInput {
   viewportW: number;
@@ -27,7 +121,7 @@ export interface PagedInput {
   lineHeightPx?: number;
 }
 
-export interface PagedGeometry extends GridGeometry {
+export interface PagedGeometry extends SpreadGeometry {
   /** Distance between the left edges of consecutive columns. */
   pitch: number;
   /** Glyph overhang kept visible on each side of the text area (italic, hanging punctuation). */
@@ -41,7 +135,7 @@ export interface PagedGeometry extends GridGeometry {
 export const MAX_OVERHANG_PX = 32;
 
 export function pagedGeometry(i: PagedInput): PagedGeometry {
-  const g = gridGeometry({ ...i, cols: i.cols });
+  const g = spreadGeometry({ ...i, cols: i.cols });
   const overhang = Math.min(g.pageInset, MAX_OVERHANG_PX);
   // One page: only one column is ever visible, so the gap only has to keep the neighbours'
   // overhang out of the clip box. Two pages: the gap is fixed by the spread layout.

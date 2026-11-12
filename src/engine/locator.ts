@@ -16,8 +16,21 @@ export function charOffsetFromRange(range: Range): number {
 export function resolveCharOffset(doc: Document, offset: number): Range {
   return rangeAtOffset(doc, buildSectionText(doc), offset);
 }
-export function createLocatorBridge(sectionCount: number): LocatorBridge {
+/**
+ * EPUB bridge. `sectionChars` returns the measured body-text length per section (null until the
+ * book is measured): the basis of Locator.progress (one owner, see flowAnchor.locatorOf).
+ */
+export function createLocatorBridge(
+  sectionCount: number,
+  sectionChars: () => readonly number[] | null = () => null,
+): LocatorBridge {
   return {
+    sectionChars,
+    globalCharOffset(index, offset) {
+      const chars = sectionChars();
+      if (!chars || index < 0 || index >= chars.length) return null;
+      return chars.slice(0, index).reduce((a, b) => a + b, 0) + Math.min(chars[index]!, Math.max(0, offset));
+    },
     cfiFromRange(index, range) {
       try {
         return CFI.joinIndir(CFI.fake.fromIndex(index), CFI.fromRange(range));

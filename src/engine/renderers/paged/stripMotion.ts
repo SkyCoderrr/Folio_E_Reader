@@ -34,6 +34,7 @@ export class StripMotion {
         },
         getScrollTop: () => this.#x + FAR,
         getMaxScroll: () => 2 * FAR,
+        getPixelSize: () => 0, // a transform renders sub-pixel: no step is too small to show
       },
       clock,
       () => this.#rest(),

@@ -52,7 +52,7 @@ fn schema_is_exact_contract_snapshot_and_strict_with_pragmas() {
                 .unwrap()
                 .query_map([], |r| r.get::<_, String>(0))
                 .unwrap()
-                .map(Result::unwrap)
+                .map(|sql| sql.unwrap().replace("\r\n", "\n"))
                 .collect::<Vec<_>>()
         };
         assert_eq!(schema(c), schema(&expected));
@@ -63,13 +63,13 @@ fn schema_is_exact_contract_snapshot_and_strict_with_pragmas() {
                 |r| r.get::<_, i64>(0)
             )
             .unwrap(),
-            6
+            7
         );
         for (pragma, value) in [
             ("foreign_keys", 1),
             ("synchronous", 1),
             ("busy_timeout", 5000),
-            ("user_version", 2),
+            ("user_version", 3),
         ] {
             assert_eq!(
                 c.pragma_query_value(None, pragma, |r| r.get::<_, i64>(0))
@@ -166,7 +166,7 @@ fn newer_database_is_untouched_and_all_repositories_reject() {
     ];
     for e in errors {
         assert_eq!(e.code, ErrorCode::DbVersionUnsupported);
-        assert_eq!(e.details, Some(json!({"found":999,"supported":2})));
+        assert_eq!(e.details, Some(json!({"found":999,"supported":3})));
     }
     assert_eq!(db.get("bad").unwrap_err().code, ErrorCode::InvalidArgument);
     assert_eq!(before, fs::read(&p.database).unwrap());

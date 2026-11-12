@@ -1,6 +1,6 @@
 # E_Reader contract
 
-**Version: 0.8.0** · Status: amended by Codex as editor for Dany_PM, 2026-11-10 · Source of truth: [PRD v1.0](../docs/PRD.md), [USER_STORIES v1.0](../docs/USER_STORIES.md)
+**Version: 0.9.0** · Status: amended by Codex as editor for Dany_PM, 2026-11-10 · Source of truth: [PRD v1.0](../docs/PRD.md), [USER_STORIES v1.0](../docs/USER_STORIES.md)
 
 ## Purpose
 
@@ -12,7 +12,7 @@ This folder is the **only** interface between the Rust/Tauri backend (Codex) and
 - **Change process:**
   1. An agent that needs a change proposes it in `.agent-logs/conversation.md` (what, why, and which commands, events or types are affected).
   2. Dany_PM edits `contract/`, bumps the version and adds a changelog entry below.
-  3. Both lanes adopt the new version and cite it in their status notes ("contract 0.8.0").
+  3. Both lanes adopt the new version and cite it in their status notes ("contract 0.9.0").
 - A feature that needs a new command starts only after the command is in the contract (PRD §12.2).
 
 ## Versioning
@@ -49,7 +49,7 @@ This folder is the **only** interface between the Rust/Tauri backend (Codex) and
 | [`settings.md`](settings.md) | Settings behaviour: ownership, load and repair, atomic write, merge-patch, managed keys, migration, built-in presets, default keymap, chord grammar. |
 | [`settings.schema.json`](settings.schema.json) | JSON Schema (draft 2020-12) of the complete effective `Settings`. |
 | [`settings.defaults.json`](settings.defaults.json) | The full default `Settings` object. |
-| [`db-schema.sql`](db-schema.sql) | SQLite schema v2 (`user_version = 2`). |
+| [`db-schema.sql`](db-schema.sql) | SQLite schema v3 (`user_version = 3`). |
 | [`db-schema.md`](db-schema.md) | DB ownership, contract-type mapping, migration policy. |
 | [`file-layout.md`](file-layout.md) | Profile and library folder layout, single instance, test-profile rules, repo layout and lane ownership. |
 | [`types.ts`](types.ts) | TS types for everything, plus the `Commands` and `Events` maps. |
@@ -69,7 +69,7 @@ Statuses: **stable**, **provisional** (may change after ADR-003), **temporary**,
 | M4 | `txt_prepare`, `txt_preview_split`, `txt_prefs_set` | — |
 | M5 | `chapters_read_get`, `chapter_mark_read`, `bookmarks_list`, `bookmark_add`, `bookmark_remove` (window commands from M0 become production per ADR-003) | — |
 | M7 | `boss_get_status`, `boss_set_shortcut`, `boss_set_enabled` (stable: R lane may start after M0.1), `dialog_pick_folder`ᵈ, `library_set_folder`ᵈ | `boss://hidden`, `boss://shown`, `boss://register-failed`, `tray://open-library`, `tray://open-settings` |
-| M8 | `stats_session_save`, `stats_query`, `book_set_total_chars` | — |
+| M8 | `stats_session_save`, `stats_query`, `book_set_total_chars`, `book_set_section_chars` | — |
 
 ᵖ provisional · ᵗ temporary · ᵈ draft. Counts: M0 8, M1 3, M2 4, M3 8 (**23 M0–M3 with examples**), M4 3, M5 3 (**37 fully specified with examples**), M7 5, M8 3 (**37 total**). Events: 11.
 
@@ -127,3 +127,6 @@ Each is the simplest robust option. Dany_PM can overturn any of them with a vers
 0.5.0 - M8 stats commands stable: charsRead input, chars aggregates, rolling speed, metadata, totals and examples. Schema remains v1.
 
 0.6.0 - Read chapters: chapters_read_get and chapter_mark_read; opaque keys, idempotent inserts, schema v2 additive migration and cascade on removal.
+
+### 0.9.0 - 2026-11-12
+- Owner-authorised G8/G9: book_open returns file-hash-bound EPUB section/fragment measurements and a per-book stats seed. book_set_section_chars persists complete or partial measurements; DB migration 003 adds the cache. Settings schema remains 1.

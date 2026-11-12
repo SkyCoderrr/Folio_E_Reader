@@ -1,9 +1,9 @@
-﻿// @vitest-environment jsdom
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import defaults from '../../../contract/settings.defaults.json';
 import { SmoothScroller, type FrameClock } from './smoothScroller';
 import { pauseReading, subscribeReadingPause } from './pauseBus';
-import { installKeyRouter } from './keyRouter';
+import { installKeyRouter, isActivationKey, keyOwner } from './keyRouter';
 import { forwardKey } from '../renderers/flow/eventForward';
 import { ScrollAnimation } from './scrollAnimation';
 import { ScrollPosition } from '../renderers/flow/scrollPosition';
@@ -37,6 +37,7 @@ function rig(hz = 60, options = {}, scale = 0, reducedMotion = false, regularFra
     },
   };
   const target = {
+    kind: 'continuous' as const,
     scrollBy: (n: number) => {
       if (scale) position.by(element, n, scale);
       else top = Math.max(0, Math.min(100000, top + n));
@@ -44,6 +45,7 @@ function rig(hz = 60, options = {}, scale = 0, reducedMotion = false, regularFra
     getScrollTop: () => top,
     getMaxScroll: () => 100000,
     getLineHeight: () => 35,
+    getPixelSize: () => (scale ? 1 / scale : 1),
   };
   const scroller = new SmoothScroller(
     target,
@@ -70,7 +72,54 @@ function rig(hz = 60, options = {}, scale = 0, reducedMotion = false, regularFra
   };
   return { scroller, advance, top: () => top, frames, target, clock, deltas };
 }
+/** Frames that stand still between the first and the last move of a motion (G-PM4). */
+const stalls = (deltas: number[]) => {
+  const moving = deltas.map((d, i) => [d, i] as const).filter(([d]) => Math.abs(d) > 1e-9);
+  if (!moving.length) return 0;
+  return deltas.slice(moving[0]![1], moving.at(-1)![1] + 1).filter((d) => Math.abs(d) <= 1e-9).length;
+};
+describe('G-PM4: a running motion never shows a frame standing still', () => {
+  it.each([1, 1.25, 1.5])('hold and tap at 240 Hz, scale %s: every frame between first and last move moves', (scale) => {
+    const hold = rig(240, {}, scale, false, true);
+    hold.scroller.press(1);
+    hold.advance(2000);
+    hold.scroller.release(1);
+    hold.advance(1000);
+    expect(stalls(hold.deltas)).toBe(0);
+    const tap = rig(240, {}, scale, false, true);
+    tap.scroller.press(1);
+    tap.advance(60);
+    tap.scroller.release(1);
+    tap.advance(1000);
+    expect(stalls(tap.deltas)).toBe(0);
+    expect(Math.abs(tap.top() - (10000 + 105))).toBeLessThanOrEqual(0.5 / scale + 1e-8); // same distance
+  });
+  it('a first frame stamped before the key press still moves, and time never runs backwards', () => {
+    const r = rig(240, {}, 1, false, true);
+    r.advance(10); // now 10 ms, between frames
+    r.scroller.press(1);
+    const lead = r.top() - 10000;
+    const [cb] = [...r.frames.values()];
+    r.frames.clear();
+    const before = r.top();
+    cb!(10 - 2); // the frame began 2 ms before the keydown was handled
+    expect(r.top() - before).toBeGreaterThanOrEqual(1);
+    r.advance(100);
+    expect(stalls([lead, ...r.deltas])).toBe(0);
+    // No double count of the time before the press: ~ floor speed ramping up, not a jump.
+    expect(Math.max(...r.deltas)).toBeLessThan(8);
+  });
+});
 describe('held-arrow physics', () => {
+  it('moves on the keydown itself, so the first painted frame shows motion even at 240 Hz', () => {
+    for (const scale of [1, 1.5]) {
+      const r = rig(240, {}, scale);
+      r.scroller.press(1);
+      expect(r.top()).toBeGreaterThan(10000); // before any animation frame
+      r.advance(1000 / 240);
+      expect(r.deltas[0]).toBeGreaterThan(0); // and the ramp continues on the next frame
+    }
+  });
   it('first frame after keydown moves at least 1 px (ease-in must not start at ~0)', () => {
     for (const hz of [60, 120]) {
       const r = rig(hz);
@@ -197,13 +246,14 @@ describe('scroll feel with a fake frame clock', () => {
     (hz) => {
       for (const direction of [1, -1] as const) {
         for (const scale of [0, 1, 1.5, 2]) {
-          const r = rig(hz, {}, scale);
+          // Periodic frames (a display never paints a partial frame at keyup).
+          const r = rig(hz, {}, scale, false, true);
           r.scroller.press(direction);
           r.advance(60);
           const at = r.top();
           r.scroller.release(direction);
           expect(r.top()).toBe(at);
-          r.advance(200);
+          r.advance(200 + 1000 / hz); // the 200 ms glide ends on the first frame after it
           expect(Math.abs(r.top() - (10000 + direction * 105))).toBeLessThanOrEqual(
             scale ? 0.5 / scale + 1e-8 : 1e-8,
           );
@@ -347,21 +397,60 @@ describe('scoped key router', () => {
       ['layout.togglePages', 'down'],
     ]);
   });
-  it('lets panels shadow reader navigation and respects unbound overrides', () => {
+  it('panel scope carries only chrome actions and respects unbound overrides', () => {
     const handle = vi.fn(() => true);
     disposers.push(
       installKeyRouter(window, {
-        scopes: () => ['panel', 'reader'],
-        bindings: { 'page.next': [] },
-        scopedBindings: { panel: { dismiss: ['Space'] } },
+        scopes: () => ['panel'],
+        bindings: { 'toc.toggle': [] },
         handle,
       }),
     );
-    window.dispatchEvent(key('Space'));
+    window.dispatchEvent(key('Escape'));
     expect(handle).toHaveBeenCalledWith('dismiss', 'down', expect.any(KeyboardEvent));
     handle.mockClear();
-    window.dispatchEvent(key('PageDown'));
+    for (const code of ['PageDown', 'Space', 'ArrowDown', 'KeyT', 'KeyD']) window.dispatchEvent(key(code));
+    expect(handle).not.toHaveBeenCalled(); // reading keys are off; T is unbound
+    window.dispatchEvent(key('KeyA'));
+    expect(handle).toHaveBeenCalledWith('appearance.toggle', 'down', expect.any(KeyboardEvent));
+  });
+  it('Space on a focused button does not turn a page: the reader scope yields to the control', () => {
+    const handle = vi.fn(() => true);
+    disposers.push(
+      installKeyRouter(window, {
+        scopes: (e) => (keyOwner(e.target) === 'activator' && isActivationKey(e) ? ['panel'] : ['reader']),
+        handle,
+      }),
+    );
+    const button = document.createElement('button');
+    document.body.append(button);
+    const space = key('Space');
+    button.dispatchEvent(space);
     expect(handle).not.toHaveBeenCalled();
+    expect(space.defaultPrevented).toBe(false); // the button still activates
+    window.dispatchEvent(key('Space'));
+    expect(handle).toHaveBeenCalledWith('page.next', 'down', expect.any(KeyboardEvent));
+    button.remove();
+  });
+  it('G0 keyOwner: value controls and navigation own the keys, buttons only Space/Enter, text nothing', () => {
+    const make = (html: string) => {
+      const host = document.createElement('div');
+      host.innerHTML = html;
+      document.body.append(host);
+      return host.firstElementChild as HTMLElement;
+    };
+    expect(keyOwner(make('<input>'))).toBe('entry');
+    expect(keyOwner(make('<div role="slider"></div>'))).toBe('entry');
+    expect(keyOwner(make('<div role="listbox"><div role="option">x</div></div>').firstElementChild)).toBe('entry');
+    expect(keyOwner(make('<div role="tree"><div role="treeitem"><span>x</span></div></div>').querySelector('span'))).toBe('navigation');
+    expect(keyOwner(make('<div role="tablist"><button role="tab">x</button></div>').firstElementChild)).toBe('navigation');
+    expect(keyOwner(make('<button><svg></svg></button>').firstElementChild)).toBe('activator');
+    expect(keyOwner(make('<a href="#x">x</a>'))).toBe('activator');
+    expect(keyOwner(make('<div tabindex="-1">text</div>'))).toBeNull();
+    expect(keyOwner(null)).toBeNull();
+    expect(isActivationKey(new KeyboardEvent('keydown', { code: 'Space' }))).toBe(true);
+    expect(isActivationKey(new KeyboardEvent('keydown', { code: 'Enter' }))).toBe(true);
+    expect(isActivationKey(new KeyboardEvent('keydown', { code: 'ArrowDown' }))).toBe(false);
   });
   it('stops held movement on document hiding', () => {
     const r = setup();

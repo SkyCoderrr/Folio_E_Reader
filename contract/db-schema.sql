@@ -1,4 +1,4 @@
--- E_Reader SQLite schema v2 (contract v0.8.0). Source: PRD §9.3. Owner: Dany_PM.
+-- E_Reader SQLite schema v3 (contract v0.9.0). Source: PRD §9.3. Owner: Dany_PM.
 -- File: <profile>\library.db. Only Rust (src-tauri/src/db/) opens it. See db-schema.md.
 --
 -- Connection setup after read-only user_version preflight, on each writable connection (not part of the migration):
@@ -79,4 +79,9 @@ CREATE TABLE chapter_read (
 ) STRICT;
 CREATE INDEX chapter_read_book_order ON chapter_read(book_id, read_at, chapter_key);
 
-PRAGMA user_version = 2;
+CREATE TABLE epub_section_chars (
+  book_id TEXT PRIMARY KEY NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  file_hash TEXT NOT NULL CHECK (length(file_hash) = 64 AND file_hash NOT GLOB '*[^0-9a-f]*'),
+  metrics_json TEXT NOT NULL CHECK (json_valid(metrics_json) AND json_type(metrics_json) = 'object')
+) STRICT;
+PRAGMA user_version = 3;

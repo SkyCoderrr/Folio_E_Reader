@@ -1,4 +1,4 @@
-﻿// @vitest-environment jsdom
+// @vitest-environment jsdom
 import { act, createElement, useEffect, type RefObject } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   save: vi.fn<() => Promise<void>>(async () => undefined),
   close: undefined as (() => void) | undefined,
 }));
-vi.mock('../../ipc/commands', () => ({ invoke: mocks.invoke }));
+vi.mock('../../ipc/commands', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../ipc/commands')>()), invoke: mocks.invoke }));
 vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: (path: string) => `asset:${path}` }));
 vi.mock('../../ipc/events', () => ({
   listen: async (_: string, cb: () => void) => {

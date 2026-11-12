@@ -6,7 +6,7 @@ const root = process.argv[2] ?? '.';
 const c = path.join(root, 'contract');
 const fails = [];
 const check = (cond, msg) => { if (!cond) fails.push(msg); };
-const read = (p) => fs.readFileSync(p, 'utf8');
+const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
 const load = (p) => JSON.parse(read(p));
 const eq = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
 function canon(v) {
@@ -171,7 +171,7 @@ const tsConst = (name) => [...new RegExp(`export const ${name} = \\[(.*?)\\] as 
 const tsActions = tsConst('ACTION_IDS');
 const rs = read(path.join(c, 'rust-types.md'));
 const version = /export const CONTRACT_VERSION = '([^']+)'/.exec(ts)[1];
-check(version === '0.8.0', 'CONTRACT_VERSION expected 0.8.0');
+check(version === '0.9.0', 'CONTRACT_VERSION expected 0.9.0');
 check(rs.includes(`pub const CONTRACT_VERSION: &str = "${version}";`), 'Rust contract version != TS');
 check(examples.app_info.result.contractVersion === version, 'app_info contract version != TS');
 const rustBlock = rs.split(/```rust\r?\n/)[1].split(/\r?\n```/)[0] + '\n';
@@ -205,7 +205,7 @@ const idx = [...cmdMd.matchAll(/^\| `(\w+)` \| (M\d) \| ([^|]+) \|/gm)].map((m) 
 check(eq(idx.map((x) => x[0]), tsCmds.map((x) => x[0])), 'commands.md index != TS Commands');
 const early = idx.filter(([, m]) => ['M0', 'M1', 'M2', 'M3', 'M4', 'M5', 'M7', 'M8'].includes(m)).map(([n]) => n);
 check(eq([...early].sort(), Object.keys(examples).sort()), `examples != M0-M8: ${early.filter((n) => !examples[n])} | ${Object.keys(examples).filter((n) => !early.includes(n))}`);
-check(tsCmds.length === 39 && early.length === 39, `counts ${tsCmds.length} ${early.length}`);
+check(tsCmds.length === 40 && early.length === 40, `counts ${tsCmds.length} ${early.length}`);
 for (const [n] of tsCmds) {
   check(cmdMd.includes('### `' + n + '`'), `no section ${n}`);
   check(readme.includes('`' + n + '`'), `README map misses ${n}`);
@@ -278,7 +278,7 @@ try {
   const { DatabaseSync } = await import('node:sqlite');
   const db = new DatabaseSync(':memory:');
   db.exec(read(path.join(c, 'db-schema.sql')));
-  check(db.prepare('PRAGMA user_version').get().user_version === 2, 'user_version');
+  check(db.prepare('PRAGMA user_version').get().user_version === 3, 'user_version');
   db.exec('PRAGMA foreign_keys = ON');
   const bid = '3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d';
   const ins = db.prepare('INSERT INTO books(id,format,title,file_name,file_rel_path,file_size,added_at) VALUES (?,?,?,?,?,?,?)');
@@ -295,7 +295,7 @@ try {
   check(threw, 'SQL accepts txt_encoding auto');
   db.prepare('INSERT INTO chapter_read VALUES (?, ?, 0)').run(bid, 's:0#');
   db.exec('DELETE FROM books');
-  for (const t of ['positions', 'bookmarks', 'book_prefs', 'sessions', 'chapter_read']) check(db.prepare(`SELECT count(*) AS n FROM ${t}`).get().n === 0, `cascade ${t}`);
+  for (const t of ['positions', 'bookmarks', 'book_prefs', 'sessions', 'chapter_read', 'epub_section_chars']) check(db.prepare(`SELECT count(*) AS n FROM ${t}`).get().n === 0, `cascade ${t}`);
   console.log('sqlite checks ran');
 } catch (e) { fails.push('sqlite: ' + e.message); }
 

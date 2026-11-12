@@ -239,8 +239,8 @@
 .popup[data-ending-style] {
   transition-duration: var(--dur-popover-out);
 }
-/* Command menus close at once (no fade-out): a selected command often swaps the whole screen
-   (Settings, Back to Library) and the fading popup would hang over the new view (t41u). */
+/* Command menus close at once (fb4, owner 12 Nov): a selected command often swaps the whole screen
+   (Settings, Back to Library) and a fading popup would hang over the new view. */
 .menuPopup[data-ending-style] {
   transition: none;
 }
@@ -389,4 +389,11 @@
   flex: none;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switchThumb,
+  .tabIndicator {
+    transition: none;
+  }
 }

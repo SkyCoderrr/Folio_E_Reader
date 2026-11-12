@@ -19,8 +19,11 @@ import { installKeyRouter } from '../engine/input/keyRouter';
 import { statsRange, timeLeftByBook } from './statsModel';
 import { watchKeyboardLayout } from '../engine/input/keyboardLayout';
 import { pauseReading } from '../engine/input/pauseBus';
+import { overlays, useOverlay } from '../state/overlayStore';
+import { bossKeyFailureCopy, errorCopy } from '../ipc/errorCopy';
 const report = (e: unknown) => {
-  toast.error(errorMessage(e));
+  console.warn(e);
+  toast.error(errorCopy(e)); // #10: user copy, never the backend message
 };
 const coverUrl = (book: BookRecord) => (book.coverPath ? convertFileSrc(book.coverPath) : null);
 export default function MainApp() {
@@ -30,6 +33,8 @@ export default function MainApp() {
   const statsEnabled = useSettings((s) => s.settings.stats.enabled);
   const [statsOpen, setStatsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // #13: Settings is a full-window overlay; Escape closes it through the app router below.
+  useOverlay('app.settings', 'screen', settingsOpen, () => setSettingsOpen(false));
   const [bossStatus, setBossStatus] = useState<BossKeyStatus | null>(null);
   const [info, setInfo] = useState<AppInfo | null>(null);
   const openSettings = useCallback(() => {
@@ -75,7 +80,7 @@ export default function MainApp() {
       await invoke('app_quit', {});
     })().catch((e: unknown) => {
       quitting.current = false;
-      setError(String(e));
+      setError(errorCopy(e));
     });
   }, []);
   useEffect(() => {
@@ -106,7 +111,7 @@ export default function MainApp() {
         if (disposed || !status) return;
         setBossStatus(status);
         if (status.enabled && !status.registered)
-          toast.error('Boss key unavailable: ' + (status.error?.message ?? status.shortcut));
+          toast.error(bossKeyFailureCopy(status.shortcut, status.error), { id: 'boss-key-registration' });
       };
       keep(
         await listen('boss://register-failed', (event) => {
@@ -152,10 +157,12 @@ export default function MainApp() {
   useEffect(
     () =>
       installKeyRouter(window, {
-        scopes: () => ['app'],
+        // Escape ('dismiss', panel scope) closes Settings when it is the top overlay.
+        scopes: () => (overlays.top()?.kind === 'screen' ? ['app', 'panel'] : ['app']),
         bindings: () => useSettings.getState().settings.keybindings,
         handle: (action, phase) => {
           if (phase === 'up') return true;
+          if (action === 'dismiss') return overlays.dismissTop();
           if (action === 'settings.open') {
             openSettings();
             return true;
@@ -169,22 +176,6 @@ export default function MainApp() {
       }),
     [openSettings, quit],
   );
-  useEffect(() => {
-    if (!settingsOpen) return;
-    const dismiss = (event: KeyboardEvent) => {
-      if (
-        event.code !== 'Escape' ||
-        event.defaultPrevented ||
-        event.isComposing ||
-        document.querySelector('[role="dialog"], [role="alertdialog"]')
-      )
-        return;
-      event.preventDefault();
-      setSettingsOpen(false);
-    };
-    window.addEventListener('keydown', dismiss);
-    return () => window.removeEventListener('keydown', dismiss);
-  }, [settingsOpen]);
   if (!loaded) return <div role="status">{error || 'Loading settings...'}</div>;
   return (
     <QuitContext.Provider value={quit}>
@@ -204,6 +195,7 @@ export default function MainApp() {
           <ReaderView
             key={library.opened.id}
             book={library.opened}
+            openedData={library.openedData ?? undefined}
             onBack={back}
             onQuit={quit}
             onSettings={openSettings}

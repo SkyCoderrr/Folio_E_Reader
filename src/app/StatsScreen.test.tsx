@@ -1,11 +1,14 @@
-﻿// @vitest-environment jsdom
+// @vitest-environment jsdom
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { StatsScreen } from './StatsScreen';
 import { invoke } from '../ipc/commands';
 import { statsRange } from './statsModel';
-vi.mock('../ipc/commands', () => ({ invoke: vi.fn() }));
+vi.mock('../ipc/commands', async (original) => ({
+  ...(await original<typeof import('../ipc/commands')>()),
+  invoke: vi.fn(),
+}));
 vi.mock('../ui/TitleBar', () => ({
   TitleBar: ({ leading }: { leading: React.ReactNode }) => leading,
 }));
@@ -54,7 +57,7 @@ it('shows query failures and keeps Library available', async () => {
   vi.mocked(invoke).mockRejectedValue(new Error('unavailable'));
   const onBack = vi.fn();
   await act(async () => root.render(createElement(StatsScreen, { onBack, onOpenBook: vi.fn() })));
-  expect(host.querySelector('[role="alert"]')?.textContent).toContain('unavailable');
+  expect(host.querySelector('[role="alert"]')?.textContent).toBe('Something went wrong. Please try again.'); // #10: no raw message
   await act(async () => host.querySelector('button')!.click());
   expect(onBack).toHaveBeenCalledOnce();
 });

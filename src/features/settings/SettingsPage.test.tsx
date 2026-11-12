@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { Settings, SettingsPane } from '@contract/types';
 import defaults from '../../../contract/settings.defaults.json';
 import { AppearancePanel } from '../appearance/AppearancePanel';
-vi.mock('../../ipc/commands', () => ({ invoke: vi.fn(async () => []) }));
+vi.mock('../../ipc/commands', async (original) => ({ ...(await original<typeof import('../../ipc/commands')>()), invoke: vi.fn(async () => []) }));
 import { SettingsPage, type SettingsPageProps } from './SettingsPage';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -190,4 +190,18 @@ it('audits every contract default key against a reachable UI control or document
     expect(text, path + ' must have a UI editor').toContain(label);
     expect(host.querySelector('button, input, textarea'), path).not.toBeNull();
   }
+});
+
+it('shows an inline success after rebinding the boss key', async () => {
+  mount();
+  click(button('Record'));
+  await act(async () => press({ code: 'KeyJ', ctrlKey: true, altKey: true }));
+  expect(host.querySelector('[role="status"]')?.textContent).toBe('Ctrl+Alt+J is ready.');
+});
+it('shows the conflict inline without leaking the backend message', async () => {
+  mount({ onBossShortcut: vi.fn().mockRejectedValue({ code: 'SHORTCUT_IN_USE', message: 'raw Windows detail' }) });
+  click(button('Record'));
+  await act(async () => press({ code: 'KeyJ', ctrlKey: true, altKey: true }));
+  expect(host.textContent).toContain('In use by another app');
+  expect(host.textContent).not.toContain('raw Windows detail');
 });

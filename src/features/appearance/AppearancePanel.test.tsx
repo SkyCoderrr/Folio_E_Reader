@@ -19,7 +19,10 @@ let root: Root;
 const realActions = { ...useSettings.getState() };
 
 beforeEach(async () => {
-  useSettings.setState({ patchStyle: realActions.patchStyle, selectPreset: realActions.selectPreset });
+  useSettings.setState({
+    patchStyle: realActions.patchStyle,
+    selectPreset: realActions.selectPreset,
+  });
   ipc.invoke.mockReset();
   ipc.invoke.mockResolvedValue([]);
   const base = structuredClone(defaults) as Settings;
@@ -99,4 +102,53 @@ it('font filter matches localized names and CJK-only', () => {
   expect(filterFonts(fonts, '雅黑', false).map((f) => f.family)).toEqual(['Microsoft YaHei']);
   expect(filterFonts(fonts, '', true)).toHaveLength(1);
   expect(filterFonts(fonts, 'sitka', false)).toHaveLength(1);
+});
+
+it('validates empty and duplicate names in the preset dialog', async () => {
+  const save = [...host.querySelectorAll('button')].find((b) =>
+    b.textContent?.startsWith('Save as Preset'),
+  )!;
+  await act(async () => save.click());
+  const submit = () =>
+    [...document.body.querySelectorAll('button')].find((b) => b.textContent === 'Save')!;
+  await act(async () => submit().click());
+  expect(document.body.textContent).toContain('Enter a name');
+  const input = document.querySelector<HTMLInputElement>('input[aria-label="Preset name"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+      input,
+      ' dark ',
+    );
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => submit().click());
+  expect(document.body.textContent).toContain('A preset with this name already exists');
+});
+
+it('commits picker changes live and describes invalid typed hex', async () => {
+  const patchStyle = vi.fn();
+  useSettings.setState({ patchStyle });
+  const picker = q('input[aria-label="Background picker"]') as HTMLInputElement;
+  expect(picker.type).toBe('color');
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+      picker,
+      '#112233',
+    );
+    picker.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  expect(patchStyle).toHaveBeenCalledWith({ colors: { background: '#112233' } });
+  const hex = q('input[aria-label="Background"]') as HTMLInputElement;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(hex, 'wrong');
+    hex.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () =>
+    hex.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
+  );
+  expect(hex.getAttribute('aria-invalid')).toBe('true');
+  expect(document.getElementById(hex.getAttribute('aria-describedby')!)?.textContent).toContain(
+    'valid hex colour',
+  );
+  expect(hex.value).toBe('wrong');
 });

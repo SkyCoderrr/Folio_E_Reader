@@ -1,5 +1,6 @@
-import type { ReactElement, ReactNode } from 'react';
+import { useId, useState, type ReactElement, type ReactNode } from 'react';
 import { Dialog as BaseDialog } from '@base-ui/react/dialog';
+import { useOverlay } from '../state/overlayStore';
 import styles from './kit.module.css';
 
 export interface DialogProps {
@@ -23,8 +24,16 @@ export function Dialog({
   description,
   actions,
 }: DialogProps) {
+  const [inner, setInner] = useState(false);
+  useOverlay(useId(), 'modal', open ?? inner); // #13: dialogs own the keyboard and Escape
   return (
-    <BaseDialog.Root open={open} onOpenChange={onOpenChange}>
+    <BaseDialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        setInner(next);
+        onOpenChange?.(next);
+      }}
+    >
       {trigger ? <BaseDialog.Trigger render={trigger} /> : null}
       <BaseDialog.Portal>
         <BaseDialog.Backdrop className={styles.backdrop} />

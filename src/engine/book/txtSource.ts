@@ -66,6 +66,7 @@ export function txtSource(manifest: TxtManifest, metadata: BookMetadata): BookSo
       },
     };
   });
+  const byId = new Map(sections.map((s, index) => [s.id, index]));
   return {
     format: 'txt',
     metadata: { ...metadata, language: manifest.lang },
@@ -73,7 +74,7 @@ export function txtSource(manifest: TxtManifest, metadata: BookMetadata): BookSo
     toc: manifest.sections.map((s, index) => ({ label: s.title, href: sections[index].id })),
     resolveHref(href) {
       const [path, fragment] = href.split('#');
-      const index = sections.findIndex((s) => s.id === path);
+      const index = byId.get(path) ?? -1;
       return index < 0
         ? null
         : { index, anchor: (doc) => (fragment ? doc.getElementById(fragment) : null) };
@@ -95,7 +96,9 @@ export function txtSource(manifest: TxtManifest, metadata: BookMetadata): BookSo
  * so DOM offsets currently approximate source offsets; snippets help re-anchor visible text.
  */
 export function createTxtLocatorBridge(manifest: TxtManifest): LocatorBridge {
+  const chars = manifest.sections.map((section) => section.chars);
   return {
+    sectionChars: () => chars,
     globalCharOffset(index, offset) {
       const section = manifest.sections[index];
       return section ? section.startChar + Math.min(section.chars, Math.max(0, offset)) : null;

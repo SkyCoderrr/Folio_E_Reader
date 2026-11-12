@@ -1,5 +1,6 @@
 mod bookmarks;
 mod chapters;
+mod epub_chars;
 pub mod migrations;
 pub(crate) mod positions;
 mod repo;
@@ -94,10 +95,34 @@ impl Database {
         self.profile.validate_library(&self.library_dir()).is_err() || !self.import_root_available()
     }
     pub(crate) fn import_root_available(&self) -> bool {
-        !self
-            .library_requires_existing
-            .load(std::sync::atomic::Ordering::Acquire)
-            || std::fs::read_dir(self.library_dir()).is_ok()
+        let root = self.library_dir();
+        match std::fs::read_dir(&root) {
+            Ok(_) => true,
+            Err(e)
+                if e.kind() == std::io::ErrorKind::NotFound
+                    && !self
+                        .library_requires_existing
+                        .load(std::sync::atomic::Ordering::Acquire) =>
+            {
+                // A fresh default library may be created, but its existing ancestor
+                // must be accessible. Existing unreadable/default roots are offline too.
+                let empty = self
+                    .with(|c| {
+                        c.query_row("SELECT NOT EXISTS(SELECT 1 FROM books)", [], |r| {
+                            r.get::<_, bool>(0)
+                        })
+                        .map_err(db_error)
+                    })
+                    .unwrap_or(false);
+                empty
+                    && root
+                        .ancestors()
+                        .skip(1)
+                        .find(|p| p.exists())
+                        .is_some_and(|p| std::fs::read_dir(p).is_ok())
+            }
+            Err(_) => false,
+        }
     }
     pub fn require_existing_library(&self, required: bool) {
         self.library_requires_existing

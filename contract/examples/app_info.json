@@ -2,7 +2,7 @@
   "args": {},
   "result": {
     "appVersion": "0.1.0",
-    "contractVersion": "0.8.0",
+    "contractVersion": "0.9.0",
     "profileDir": "C:\\Users\\dany\\AppData\\Local\\Temp\\e_reader_test\\run-01",
     "libraryDir": "C:\\Users\\dany\\AppData\\Local\\Temp\\e_reader_test\\run-01\\library",
     "libraryOffline": false,

@@ -83,3 +83,17 @@ it('Delete asks for confirmation, then removes', () => {
   act(() => confirm.click());
   expect(p.onRemove).toHaveBeenCalledWith([books[0]!.id]);
 });
+
+it('names an unmatched query and clears it', () => {
+  const p = render(sampleBooks(1_000_000_000_000), { query: 'missing title xyz' });
+  expect(host.textContent).toContain("No books match 'missing title xyz'");
+  const clear = [...host.querySelectorAll('button')].find((b) => b.textContent === 'Clear Search')!;
+  act(() => clear.click());
+  expect(p.onQueryChange).toHaveBeenCalledWith('');
+});
+
+it('uses the specified drop invitation', async () => {
+  const { DropOverlay } = await import('./DropOverlay');
+  act(() => root.render(<DropOverlay visible />));
+  expect(host.textContent).toBe('Drop to add to library');
+});

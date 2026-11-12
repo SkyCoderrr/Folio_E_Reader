@@ -1,4 +1,4 @@
-# Events, backend → UI (contract v0.8.0)
+# Events, backend → UI (contract v0.9.0)
 
 ## Rules
 

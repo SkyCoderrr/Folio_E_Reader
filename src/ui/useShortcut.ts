@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import type { ActionId, Keybindings } from '@contract/types';
 import { effectiveKeymap } from '../engine/input/keymap';
 import { formatChord } from '../features/settings/chords';
@@ -18,5 +19,5 @@ export function useShortcut(action: ActionId | undefined): string | undefined {
 /** Same, for building many menu entries at once: `const sc = useShortcuts(); sc('toc.toggle')`. */
 export function useShortcuts(): (action: ActionId) => string | undefined {
   const overrides = useSettings((s) => s.settings.keybindings);
-  return (action) => shortcutFor(action, overrides);
+  return useCallback((action: ActionId) => shortcutFor(action, overrides), [overrides]);
 }

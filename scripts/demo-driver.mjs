@@ -53,14 +53,22 @@ export async function evaluate(send, expression) {
   return r.result?.value;
 }
 
+// Imports a fixture through the library_import IPC (the library has no <input type=file>; import uses the
+// native dialog) and opens it by double-clicking its library card. Refuses to run outside a test profile.
 export async function openFixture(send, file) {
-  await send('DOM.enable');
-  const { root } = await send('DOM.getDocument', { depth: -1, pierce: true });
-  const { nodeId } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: 'input[type=file]' });
-  if (!nodeId) throw new Error('no file input on the page');
-  await send('DOM.setFileInputFiles', { nodeId, files: [path.join(repo, 'tests', 'fixtures', file)] });
+  const invoke = (cmd, args) => evaluate(send, `window.__TAURI_INTERNALS__.invoke(${JSON.stringify(cmd)}, ${JSON.stringify(args)})`);
+  for (let i = 0; i < 40 && !(await evaluate(send, '!!window.__TAURI_INTERNALS__')); i++) await sleep(250);
+  const info = await invoke('app_info', {});
+  if (!info?.isTestProfile) throw new Error('not a test profile');
+  await invoke('library_import', { jobId: 'fixture-' + Date.now(), paths: [path.join(repo, 'tests', 'fixtures', file)] });
+  const word = JSON.stringify(path.basename(file).split(/[-_.]/)[0].toLowerCase());
+  for (let i = 0; i < 40; i++) {
+    const opened = await evaluate(send, `(() => { const cards=[...document.querySelectorAll('[data-book-id]')]; const c=cards.find(e=>e.textContent.toLowerCase().includes(${word})) ?? (cards.length===1 ? cards[0] : null); if(!c) return false; c.dispatchEvent(new MouseEvent('dblclick',{bubbles:true})); return true; })()`);
+    if (opened) return;
+    await sleep(250);
+  }
+  throw new Error('fixture card not found in library: ' + file);
 }
-
 export async function key(send, keyName, code, modifiers = 0, vk = 0) {
   for (const type of ['rawKeyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: keyName, code, modifiers, windowsVirtualKeyCode: vk });
 }

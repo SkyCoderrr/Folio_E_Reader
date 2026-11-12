@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { TocItem } from '../engine/book/BookSource';
 import { Toaster, toast } from '../ui/kit';
 import { TocSidebar } from '../features/toc/TocSidebar';
+import { buildTocSpans, classifyToc, chapterKeyFor } from '../features/toc/tocModel';
 import { BookmarkMark } from '../features/toc/BookmarkMark';
 
 const zh: TocItem[] = [
@@ -68,7 +69,21 @@ export default function TocDemo() {
   const [tab, setTab] = useState<'contents' | 'bookmarks'>('contents');
   const [cur, setCur] = useState<string | null>(q.includes('en') ? 'a2b.xhtml' : 'a2a.xhtml');
   const [bms, setBms] = useState(q.includes('nobm') ? [] : initial);
-  const toc = q.includes('empty') ? [] : q.includes('en') ? en : zh;
+  const toc = useMemo(() => (q.includes('empty') ? [] : q.includes('en') ? en : zh), [q]);
+  const hrefs = useMemo(() => {
+    const all = (items: TocItem[]): string[] => items.flatMap((i) => [i.href, ...all(i.subitems ?? [])]);
+    return all(toc);
+  }, [toc]);
+  const spans = useMemo(
+    () =>
+      buildTocSpans(toc, {
+        resolve: (h) => (hrefs.includes(h) ? hrefs.indexOf(h) : null),
+        weights: hrefs.map(() => 1),
+        chapterKey: chapterKeyFor,
+      }),
+    [toc, hrefs],
+  );
+  const reading = classifyToc(spans, cur ? { sectionIndex: hrefs.indexOf(cur), progress: 0 } : null);
   return (
     <div style={{ position: 'relative', height: '100vh', background: 'rgb(244 239 228)', color: 'rgb(43 42 39)', overflow: 'hidden' }}>
       <button type="button" onClick={() => setOpen((o) => !o)} style={{ position: 'absolute', insetInlineEnd: 16, top: 16 }}>
@@ -80,13 +95,15 @@ export default function TocDemo() {
         </span>
         <p>Dummy page over a light reading theme. 这是一个浅色阅读主题下的占位页面。</p>
       </div>
+      {/* Demo book: every TOC entry is its own section. */}
       <TocSidebar
         open={open}
         animate
         tab={tab}
         onTabChange={setTab}
         toc={toc}
-        currentHref={cur}
+        spans={spans}
+        reading={reading}
         onNavigate={setCur}
         bookmarks={bms}
         onBookmarkOpen={(id) => toast(`Open bookmark ${id}`)}
@@ -100,7 +117,6 @@ export default function TocDemo() {
             },
           });
         }}
-        onClose={() => setOpen(false)}
       />
       <Toaster />
     </div>

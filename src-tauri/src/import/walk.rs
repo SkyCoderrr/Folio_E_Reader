@@ -44,7 +44,7 @@ pub fn enumerate(paths: &[String]) -> Vec<Candidate> {
                     .then_with(|| a.cmp(&b))
             })
             .into_iter()
-            .filter_entry(|e| !is_reparse(e.path()).unwrap_or(false));
+            .filter_entry(|e| !is_reparse(e.path()).unwrap_or(true));
         for entry in walker {
             match entry {
                 Ok(entry) if entry.file_type().is_file() && format(entry.path()).is_some() => {

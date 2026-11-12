@@ -4,7 +4,7 @@ import styles from './LibraryView.module.css';
 export function DropOverlay({ visible }: { visible: boolean }) {
   return (
     <div className={styles.drop} data-visible={visible} aria-hidden={!visible} role="presentation">
-      <div className={styles.dropBox}>Drop books to add them</div>
+      <div className={styles.dropBox}>Drop to add to library</div>
     </div>
   );
 }

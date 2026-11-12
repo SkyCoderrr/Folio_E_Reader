@@ -18,7 +18,7 @@ fn row(row: &rusqlite::Row<'_>, db: &Database) -> rusqlite::Result<Result<BookRe
     let format: String = row.get(1)?;
     let rel: String = row.get(6)?;
     let cover: Option<String> = row.get(8)?;
-    let mut record = BookRecord {
+    let record = BookRecord {
         id: id.clone(),
         format: if format == "epub" {
             BookFormat::Epub
@@ -60,13 +60,6 @@ fn row(row: &rusqlite::Row<'_>, db: &Database) -> rusqlite::Result<Result<BookRe
         {
             return Err(db_error("Invalid managed relative path"));
         }
-        let unsafe_file = db.managed_path(&db.library_dir().join(&rel)).is_err();
-        if let Some(p) = &record.cover_path {
-            if db.managed_path(std::path::Path::new(p)).is_err() {
-                log::warn!("Refusing redirected/unreadable cover: {p}");
-                record.cover_path = None;
-            }
-        }
         if record.file_size == 0
             || record.file_size > SAFE_INTEGER
             || record.total_chars.is_some_and(|v| v > SAFE_INTEGER)
@@ -83,11 +76,7 @@ fn row(row: &rusqlite::Row<'_>, db: &Database) -> rusqlite::Result<Result<BookRe
         {
             return Err(db_error("Invalid persisted numeric value"));
         }
-        let file_missing = unsafe_file || !std::path::Path::new(&record.file_path).is_file();
-        Ok(BookRecord {
-            file_missing,
-            ..record
-        })
+        Ok(record)
     })())
 }
 pub(super) fn get(c: &Connection, db: &Database, id: &str) -> Result<BookRecord, AppError> {
@@ -100,10 +89,27 @@ pub(super) fn get(c: &Connection, db: &Database, id: &str) -> Result<BookRecord,
     .map_err(db_error)?
     .ok_or_else(|| missing(id))?
 }
+// Filesystem inspection must never run under the SQLite connection mutex.
+fn inspect(db: &Database, mut book: BookRecord) -> BookRecord {
+    book.file_missing = db
+        .managed_path(std::path::Path::new(&book.file_path))
+        .is_err()
+        || !std::path::Path::new(&book.file_path).is_file()
+        || std::fs::File::open(&book.file_path).is_err();
+    if book
+        .cover_path
+        .as_ref()
+        .is_some_and(|p| db.managed_path(std::path::Path::new(p)).is_err())
+    {
+        book.cover_path = None;
+    }
+    book
+}
 impl Database {
     pub fn get(&self, id: &str) -> Result<BookRecord, AppError> {
         validate_id(id)?;
         self.with(|c| get(c, self, id))
+            .map(|book| inspect(self, book))
     }
     pub fn list(&self) -> Result<Vec<BookRecord>, AppError> {
         self.with(|c| {
@@ -116,8 +122,9 @@ impl Database {
                 .query_map([], |r| row(r, self))
                 .map_err(db_error)?
                 .map(|r| r.map_err(db_error).and_then(|r| r))
-                .collect()
+                .collect::<Result<Vec<_>, AppError>>()
         })
+        .map(|books| books.into_iter().map(|book| inspect(self, book)).collect())
     }
     pub fn insert(&self, book: &NewBook) -> Result<BookRecord, AppError> {
         validate_id(&book.id)?;
@@ -130,7 +137,7 @@ impl Database {
             let result = get(&tx, self, &book.id)?;
             tx.commit().map_err(db_error)?;
             Ok(result)
-        })
+        }).map(|book| inspect(self, book))
     }
     pub fn remove(&self, ids: &[String]) -> Result<LibraryRemoveResult, AppError> {
         if ids.is_empty() || ids.len() > 10000 {
@@ -138,6 +145,10 @@ impl Database {
         }
         for id in ids {
             validate_id(id)?;
+        }
+        for id in ids {
+            self.managed_path(&self.profile.covers.join(format!("{id}.jpg")))?;
+            self.managed_path(&self.profile.cache.join("txt").join(id))?;
         }
         let books = self.with(|c| {
             let tx = c.transaction().map_err(db_error)?;
@@ -149,8 +160,6 @@ impl Database {
                 }
                 match get(&tx, self, id) {
                     Ok(book) => {
-                        self.managed_path(&self.profile.covers.join(format!("{}.jpg", book.id)))?;
-                        self.managed_path(&self.profile.cache.join("txt").join(id))?;
                         tx.execute("DELETE FROM books WHERE id=?1", [id])
                             .map_err(db_error)?;
                         books.push(book);
@@ -201,25 +210,43 @@ impl Database {
     }
     pub fn open_book(&self, id: &str) -> Result<BookOpenResult, AppError> {
         validate_id(id)?;
+        let book = self.get(id)?;
+        if book.file_missing {
+            return Err(
+                AppError::new(ErrorCode::BookFileMissing, "Library copy is missing")
+                    .with_details(serde_json::json!({"bookId":id,"path":book.file_path})),
+            );
+        }
+        // Revalidate every EPUB: also detects changes with unchanged size/mtime.
+        if book.format == BookFormat::Epub {
+            let meta = crate::import::epub_meta::read(std::path::Path::new(&book.file_path))?;
+            let error = if meta.drm {
+                Some(ErrorCode::BookDrmProtected)
+            } else if meta.fixed {
+                Some(ErrorCode::BookFixedLayout)
+            } else {
+                None
+            };
+            if let Some(code) = error {
+                let message = if meta.drm {
+                    "This book is DRM-protected and can't be opened"
+                } else {
+                    "Fixed-layout books aren't supported yet"
+                };
+                return Err(
+                    AppError::new(code, message).with_details(serde_json::json!({"bookId":id}))
+                );
+            }
+        }
+        let hash = if book.format == BookFormat::Epub {
+            Some(super::epub_chars::file_hash(&book.file_path)?)
+        } else {
+            None
+        };
         self.with(|c| {
-            let book = get(c, self, id)?;
-            if book.file_missing {
-                return Err(AppError::new(ErrorCode::BookFileMissing, "Library copy is missing").with_details(serde_json::json!({"bookId":id,"path":book.file_path})));
-            }
-            // Revalidate every EPUB: also detects changes with unchanged size/mtime.
-            if book.format == BookFormat::Epub {
-                let meta = crate::import::epub_meta::read(std::path::Path::new(&book.file_path))?;
-                let error = if meta.drm { Some(ErrorCode::BookDrmProtected) } else if meta.fixed { Some(ErrorCode::BookFixedLayout) } else { None };
-                if let Some(code) = error {
-                    let message = if meta.drm {
-                        "This book is DRM-protected and can't be opened"
-                    } else {
-                        "Fixed-layout books aren't supported yet"
-                    };
-                    return Err(AppError::new(code, message).with_details(serde_json::json!({"bookId":id})));
-                }
-            }
             let tx = c.transaction().map_err(db_error)?;
+            let epub_metrics = hash.map(|hash| super::epub_chars::read(&tx, id, hash)).transpose()?;
+            let stats_seed = super::stats::book_seed(&tx, id)?;
             let locator = super::positions::read(&tx, id)?;
             let txt_prefs = if book.format == BookFormat::Txt {
                 tx.execute("INSERT OR IGNORE INTO book_prefs(book_id) VALUES (?1)", [id]).map_err(db_error)?;
@@ -227,9 +254,13 @@ impl Database {
                 Some(serde_json::from_str(&json).map_err(db_error)?)
             } else { None };
             tx.execute("UPDATE books SET last_opened_at=?2 WHERE id=?1", params![id,now()]).map_err(db_error)?;
-            let book = get(&tx, self, id)?;
+            // Refresh DB fields after parsing: a position save may have completed
+            // while the EPUB was being read. Keep the already inspected paths.
+            let mut current = get(&tx, self, id)?;
+            current.file_missing = book.file_missing;
+            current.cover_path = book.cover_path;
             tx.commit().map_err(db_error)?;
-            Ok(BookOpenResult { book, locator, txt_prefs })
+            Ok(BookOpenResult { book: current, locator, txt_prefs, epub_metrics, stats_seed })
         })
     }
 }

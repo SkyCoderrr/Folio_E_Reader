@@ -1,4 +1,4 @@
-# File layout (contract v0.8.0)
+# File layout (contract v0.9.0)
 
 Source: PRD §9.1, §10.2, §12.1, §12.5. Windows 11 only.
 

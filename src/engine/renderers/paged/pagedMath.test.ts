@@ -9,6 +9,8 @@ import {
   STEP_MS,
   stripFrameWidth,
   wholeLines,
+  effectivePages,
+  spreadGeometry,
   WheelPager,
 } from './pagedMath';
 
@@ -158,4 +160,69 @@ describe('wholeLines / pagedGeometry lineHeightPx (t24u: no uneven empty band at
     const w = wholeLines(40, 952, 28.875);
     expect(Math.floor(w.textH / 28.875)).toBe(Math.floor(952 / 28.875));
   });
+});
+
+const spreadBase = { viewportW: 1600, viewportH: 900, gapPx: 48, marginXPx: 48, marginYPx: 40, maxLineWidthPx: 720 };
+
+describe('spreadGeometry (two pages across the viewport)', () => {
+  it('splits the viewport into two pages, each one viewport tall', () => {
+    const g = spreadGeometry(spreadBase);
+    expect(g.pageH).toBe(900);
+    expect(g.rowH).toBe(948);
+    expect(g.pageW).toBe(776); // (1600 − 48) / 2
+    expect(g.textW).toBe(680); // 776 − 2·48, under the 720 cap
+    expect(g.pageInset).toBe(48);
+    expect(g.colGap).toBe(144); // 48 + 48 gap + 48
+    expect(g.frameLeft).toBe(48);
+    expect(g.frameW).toBe(2 * 680 + 144);
+    expect(g.textH).toBe(820);
+  });
+
+  it('caps the text column at maxLineWidth and centres it in each page', () => {
+    const g = spreadGeometry({ ...spreadBase, viewportW: 2560 });
+    expect(g.pageW).toBe(1256);
+    expect(g.textW).toBe(720);
+    const rightTextX = g.frameLeft + g.textW + g.colGap;
+    expect(rightTextX).toBe(g.spreadLeft + g.pageW + g.gapPx + g.pageInset);
+    expect(g.frameLeft + g.frameW).toBe(g.spreadLeft + 2 * g.pageW + g.gapPx - g.pageInset);
+  });
+
+  it('fills the page when maxLineWidth is null, never exceeds the viewport', () => {
+    for (const w of [301, 999, 1601, 3441]) {
+      const g = spreadGeometry({ ...spreadBase, viewportW: w, maxLineWidthPx: null });
+      expect(2 * g.pageW + g.gapPx).toBeLessThanOrEqual(w);
+      expect(g.textW).toBeLessThanOrEqual(g.pageW);
+      expect(g.textW).toBeGreaterThan(0);
+    }
+  });
+
+  it('shrinks the vertical margins on very short viewports', () => {
+    const g = spreadGeometry({ ...spreadBase, viewportH: 100 });
+    expect(g.textH).toBeGreaterThanOrEqual(48);
+    expect(g.textH + 2 * g.marginY).toBe(100);
+  });
+});
+
+describe('narrow-window fallback (FR-LM-3, LM-04, LM-07)', () => {
+  it('two pages show one page below minSpreadWidthPx and two again at or above it', () => {
+    expect(effectivePages(2, 999, 1000)).toBe(1);
+    expect(effectivePages(2, 1000, 1000)).toBe(2);
+    expect(effectivePages(2, 3440, 1000)).toBe(2);
+    expect(effectivePages(2, 1500, 1600)).toBe(1);
+  });
+
+  it('never shows two pages for a one-page request, at any width', () => {
+    for (const w of [480, 1000, 2560, 3440, 10000]) expect(effectivePages(1, w, 600)).toBe(1);
+  });
+
+  it('one page: a single text column as wide as the viewport allows, centred', () => {
+    const g = spreadGeometry({ ...spreadBase, viewportW: 900, cols: 1 });
+    expect(g.cols).toBe(1);
+    expect(g.pageW).toBe(900);
+    expect(g.spreadLeft).toBe(0);
+    expect(g.textW).toBe(720);
+    expect(g.frameW).toBe(g.textW);
+    expect(g.frameLeft).toBe(90);
+  });
+
 });

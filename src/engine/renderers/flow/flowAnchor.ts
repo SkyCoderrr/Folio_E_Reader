@@ -20,8 +20,13 @@ import {
 } from './sectionText';
 import { findNearestSnippet } from './textOffsets';
 
-/** Optional CFI / TXT bridge, implemented by locator.ts (M1.5b) on top of foliate-js epubcfi. */
+/**
+ * Optional CFI / TXT bridge, implemented by locator.ts (M1.5b) on top of foliate-js epubcfi.
+ * `sectionChars` is the one basis of Locator.progress (body-text UTF-16 length per section: the
+ * TXT manifest, or the measured EPUB sections); null until known, then the section sizes stand in.
+ */
 export interface LocatorBridge {
+  sectionChars?(): readonly number[] | null;
   cfiFromRange?(sectionIndex: number, range: Range): string | null;
   parseCfi?(cfi: string): { sectionIndex: number; toRange(doc: Document): Range | null } | null;
   globalCharOffset?(sectionIndex: number, charOffset: number): number | null;
@@ -78,14 +83,28 @@ export function textAnchorOf(a: Anchor): TextAnchor | null {
   return top === null ? null : { index: a.index, range: a.range, docY: top };
 }
 
-/** `slots` only needs `frameAt` (also used by PageGridRenderer with GridSlots). */
+/** Weights of Locator.progress: the bridge's section chars once known, else the section sizes. */
+export function progressWeights(sizes: ArrayLike<number>, bridge?: LocatorBridge): ArrayLike<number> {
+  const chars = bridge?.sectionChars?.();
+  return chars && chars.length === sizes.length ? chars : sizes;
+}
+
+/**
+ * The one place a Locator (and its progress) is made (N2). `atEnd`: the view shows the end of the
+ * book, so progress is 1 whatever character is first on screen (N1). Without a live range (section
+ * not mounted) the offset is estimated from the anchor fraction when the section chars are known;
+ * such a locator has no cfi and no snippet (locatorAttempts restores it by position).
+ * `slots` only needs `frameAt` (FlowSlots, PagedFrames).
+ */
 export function locatorOf(
   slots: Pick<FlowSlots, 'frameAt'>,
   a: Anchor,
   sizes: ArrayLike<number>,
-  bridge?: LocatorBridge,
+  bridge: LocatorBridge | undefined,
+  atEnd: boolean,
 ): Locator {
   const text = slots.frameAt(a.index)?.text();
+  const weights = progressWeights(sizes, bridge);
   let charOffset = 0;
   let snippet = '';
   let cfi: string | null = null;
@@ -95,16 +114,30 @@ export function locatorOf(
     snippet = snippetAt(text, charOffset);
     fraction = text.total > 0 ? charOffset / text.total : 0;
     cfi = bridge?.cfiFromRange?.(a.index, a.range) ?? null;
+  } else if (weights !== sizes) {
+    charOffset = Math.round(fraction * Math.max(0, weights[a.index] ?? 0));
   }
   return {
     sectionIndex: a.index,
     cfi,
     charOffset,
     globalCharOffset: bridge?.globalCharOffset?.(a.index, charOffset) ?? null,
-    progress: bookProgress(sizes, a.index, fraction),
+    progress: atEnd ? 1 : bookProgress(weights, a.index, fraction),
     snippet,
   };
 }
+
+/**
+ * The other half of N1 (G-PM2): progress 1 is only ever made at the end of the book (locatorOf), so
+ * a locator with progress 1 is restored as the end of the book, never as "this line at the top"
+ * (which can land a part line short of the bottom and read 99%).
+ */
+export function isBookEnd(loc: Pick<Locator, 'progress'>): boolean {
+  return loc.progress >= 1;
+}
+
+/** Scroll positions within this of the bottom are the bottom (fractional device-pixel scrollTop). */
+export const END_TOLERANCE_PX = 1;
 
 /** Place a char offset at the top; a snippet re-anchors to the nearest matching text. */
 export function offsetPlacement(offset: number, snippet: string): Placement {
@@ -164,20 +197,16 @@ export function locatorAttempts(
       return g ? [g.sectionIndex, offsetPlacement(g.charOffset, loc.snippet)] : null;
     },
     () => {
-      const p = locateProgress(sizes, loc.progress);
+      const p = locateProgress(progressWeights(sizes, bridge), loc.progress);
       return [
         p.index,
         (f, top) => offsetPlacement(Math.round(p.fraction * (f.text()?.total ?? 0)), '')(f, top),
       ];
     },
   ];
-  // A virtualized section may not have a DOM range yet. Its zero offset is a
-  // placeholder, not evidence that the reader is at the section start. Restore
-  // its measured/estimated fraction before trying that placeholder offset.
-  if (!loc.cfi && !loc.snippet && loc.charOffset === 0 &&
-      loc.progress > bookProgress(sizes, loc.sectionIndex, 0) + 1e-9) {
-    attempts.unshift(attempts.pop()!);
-  }
+  // No text evidence (no cfi, snippet or offset: the section was not mounted when it was taken):
+  // the book position is all it says.
+  if (!loc.cfi && !loc.snippet && loc.charOffset === 0) attempts.unshift(attempts.pop()!);
   if (global)
     attempts.unshift(() => [global.sectionIndex, offsetPlacement(global.charOffset, loc.snippet)]);
   return attempts;

@@ -19,13 +19,6 @@
   flex: none;
   font-variant-numeric: tabular-nums;
 }
-.notice {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .timeLeft {
   flex: 0 0 auto;
   min-width: 0;

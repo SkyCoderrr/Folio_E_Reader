@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import type { ReadingStyle, Settings, SettingsPatch, Preset } from '@contract/types';
 import defaults from '../../contract/settings.defaults.json';
 import { invoke } from '../ipc/commands';
@@ -154,14 +154,6 @@ export function createSettingsStore() {
           try {
             acknowledged = await invoke('settings_get', {});
             set({ ...derived(acknowledged), loaded: true, error: null });
-            const legacy = await invoke('kv_get', { key: 'reader.pagesPerView' });
-            if (legacy === 1 || legacy === 2) {
-              if (acknowledged.reader.pagesPerView === defaults.reader.pagesPerView) {
-                get().setReader({ reader: { pagesPerView: legacy } });
-                await flush();
-              }
-              await invoke('kv_set', { key: 'reader.pagesPerView', value: null });
-            }
           } catch (error) {
             set({ loaded: false, error });
             throw error;

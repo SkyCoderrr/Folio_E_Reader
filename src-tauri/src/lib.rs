@@ -16,7 +16,7 @@ use std::sync::Arc;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 pub struct AppState {
     pub profile: profile::Profile,
-    pub settings: std::sync::Mutex<settings::LoadedSettings>,
+    pub settings: storage::SnapshotStore<settings::LoadedSettings>,
     pub applied_title_bar: TitleBarMode,
     pub kv: kv::KvStore,
     pub library: Arc<import::Library>,
@@ -162,7 +162,7 @@ pub fn run() {
                 app.manage(AppState {
                     profile: profile.clone(),
                     applied_title_bar: settings.effective.window.title_bar,
-                    settings: std::sync::Mutex::new(settings),
+                    settings: storage::SnapshotStore::new(settings),
                     kv,
                     library,
                 });
@@ -287,6 +287,7 @@ pub fn run() {
             commands::stats_session_save,
             commands::stats_query,
             commands::book_set_total_chars,
+            commands::book_set_section_chars,
             commands::bookmark_remove
         ])
         .build(tauri::generate_context!());

@@ -66,15 +66,10 @@ export function ancestorsOf(toc: TocItem[], href: string | null): string[] {
 export interface TocBookInfo {
   /** Book-level TOC href → section index (null = unknown / external). */
   resolve: (href: string) => number | null;
-  /** Section.size per spine/TXT section (same weights as Locator.progress). */
-  sizes: readonly number[];
-  /** Drives the chapterKey scheme: EPUB "s:<spine>#<fragment>", TXT "t:<chapter index>". */
-  format: 'epub' | 'txt';
-  /**
-   * Body-text UTF-16 length per section (the Locator.charOffset / progress measure). When present
-   * it replaces `sizes` as the weight, so in-section entry starts line up with Locator.progress.
-   */
-  chars?: readonly number[];
+  /** Per-section weights: the same basis as Locator.progress (LocatorBridge.sectionChars). */
+  weights: readonly number[];
+  /** Persisted chapter id of an entry starting in section `start` (see chapterKeyFor / txtChapterKey). */
+  chapterKey: (start: number, href: string) => string;
   /**
    * Book-level TOC href → char offset of its #fragment inside its section (0 = section start).
    * Several entries can share one spine section and differ only by fragment (EPUB).
@@ -126,23 +121,27 @@ export interface TocReading {
 }
 
 /**
- * Persisted chapter id. Opaque to Rust (non-empty, <= 512 bytes). Derived only from the book's
- * own structure (spine index / TXT chapter index / href fragment), so it survives reopen and re-layout.
+ * Persisted EPUB chapter id. Opaque to Rust (non-empty, <= 512 bytes). Derived only from the book's
+ * own structure (spine index + href fragment), so it survives reopen and re-layout.
  */
-export function chapterKeyFor(
-  format: 'epub' | 'txt',
-  start: number | null,
-  href: string,
-): string | null {
-  if (start === null) return null;
-  if (format === 'txt') return `t:${start}`;
+export function chapterKeyFor(start: number, href: string): string {
   const hash = href.indexOf('#');
   return `s:${start}#${hash >= 0 ? href.slice(hash + 1) : ''}`;
 }
 
+/**
+ * Persisted TXT chapter id (#5): the chapter's first character in the decoded text, with the
+ * encoding that decoded it. A re-split (chapter pattern, fallback size) keeps the id of every
+ * chapter that still starts at the same character and gives moved or new chapters new ids, so a
+ * read mark never lands on a different chapter. Old "t:<index>" keys simply stop matching.
+ */
+export function txtChapterKey(encoding: string, startChar: number): string {
+  return `t:${encoding}@${startChar}`;
+}
+
 /** Pre-order list of entries with their book-fraction spans (build once per book). */
 export function buildTocSpans(toc: TocItem[], info: TocBookInfo): TocSpan[] {
-  const weights = info.chars && info.chars.length === info.sizes.length ? info.chars : info.sizes;
+  const weights = info.weights;
   const total = weights.reduce((a, b) => a + Math.max(0, b || 0), 0);
   const cum: number[] = [0];
   weights.forEach((s, i) => cum.push(cum[i] + Math.max(0, s || 0)));
@@ -161,7 +160,7 @@ export function buildTocSpans(toc: TocItem[], info: TocBookInfo): TocSpan[] {
       out.push({
         key,
         href: it.href,
-        chapterKey: chapterKeyFor(info.format, start, it.href),
+        chapterKey: start === null ? null : info.chapterKey(start, it.href),
         start,
         offset,
         from: start === null ? 0 : frac(start, offset),
@@ -171,15 +170,21 @@ export function buildTocSpans(toc: TocItem[], info: TocBookInfo): TocSpan[] {
       if (it.subitems?.length) walk(it.subitems, `${key}.`);
     });
   walk(toc, '');
-  if (info.pending)
-    for (const a of out)
-      a.unsure = a.start !== null && out.some((b) => b.start === a.start && b.href !== a.href);
-  // end = the start of the nearest entry that starts later in the book (section, then offset)
-  for (const a of out) {
-    if (a.start === null) continue;
-    let to = 1;
-    for (const b of out) if (b.start !== null && comesBefore(a, b) && b.from < to) to = b.from;
-    a.to = Math.max(a.from, to);
+  const placed = out.filter((s) => s.start !== null);
+  if (info.pending) {
+    const hrefs = new Map<number, Set<string>>();
+    for (const s of placed) hrefs.set(s.start!, (hrefs.get(s.start!) ?? new Set()).add(s.href));
+    for (const s of placed) s.unsure = hrefs.get(s.start!)!.size > 1;
+  }
+  // end = the start of the nearest entry that starts later in the book (section, then offset):
+  // in position order that is the next distinct position (`from` grows with the position).
+  const sorted = [...placed].sort((a, b) => a.start! - b.start! || a.offset - b.offset);
+  let to = 1;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const s = sorted[i]!;
+    const next = sorted[i + 1];
+    if (next && comesBefore(s, next)) to = next.from;
+    s.to = Math.max(s.from, to);
   }
   return out;
 }
@@ -221,4 +226,17 @@ export function classifyToc(
   const finished = cur.to >= 1 && progress >= 0.99995;
   const percent = finished ? 100 : Math.min(99, Math.round(p * 100));
   return { currentKey: cur.key, currentHref: cur.href, currentChapterKey: cur.chapterKey, percent };
+}
+
+/** 1-based ordinal of entry `key` among the entries that resolve (pre-order, every depth) / their count. */
+export function tocOrdinal(spans: readonly TocSpan[], key: string | null): { index: number; count: number } | null {
+  if (!key) return null;
+  let count = 0;
+  let index = 0;
+  for (const s of spans) {
+    if (s.start === null) continue;
+    count++;
+    if (s.key === key) index = count;
+  }
+  return index ? { index, count } : null;
 }

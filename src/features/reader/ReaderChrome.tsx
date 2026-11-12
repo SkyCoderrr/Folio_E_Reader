@@ -1,19 +1,20 @@
 import {
+  memo,
   useEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
-  type FocusEvent,
   type ReactNode,
 } from 'react';
+import { consumePress } from '../../engine/input/pressArbiter';
+import { overlays } from '../../state/overlayStore';
 import { TitleBar, type SidebarToggle } from '../../ui/TitleBar';
 import {
   HIDE_GRACE_MS,
   REVEAL_ZONE_PX,
   chromeWantsVisible,
   inRevealZone,
-  isPinKey,
 } from '../../ui/chromeReveal';
 import { Menu, type MenuEntry } from '../../ui/Menu';
 import { Popover } from '../../ui/Popover';
@@ -26,9 +27,9 @@ import '../../ui/tokens.css';
 export interface ReaderTheme {
   /** Reading-surface background (any CSS colour). Default: Dark preset. */
   background: string;
-  /** Reading text colour; chrome text adopts it. Default: Dark preset. */
+  /** Reading text colour; functional chrome stays dark. Default: Dark preset. */
   text: string;
-  /** Preset accent (RS-07.1): TOC current-row tint, bookmark marks and focus rings follow it. */
+  /** Preset accent for the reading surface; bookmark marks inherit it from their own layer. */
   accent?: string;
 }
 
@@ -61,16 +62,13 @@ interface Props {
   theme?: ReaderTheme;
   /** Set true while one of the bar's menus/popovers is open: keeps the chrome visible. */
   menuOpen?: boolean;
-  /** Controlled pin (H). Omit for internal state. */
+  /** Pinned (H, owned by the key router): the chrome stays visible. */
   pinned?: boolean;
-  /** Disable when the scoped key router owns H. */
-  keyboardPin?: boolean;
-  onPinnedChange?: (pinned: boolean) => void;
   /** Called when the chrome's visibility changes. */
   onVisibleChange?: (visible: boolean) => void;
   onClose?: () => void;
-  /** Called after the bar's own menu closes with focus left in the bar: move focus to the text. */
-  onMenusClosed?: () => void;
+  /** The reader's text: a menu or popover of the bar closed by the pointer returns focus here (G0). */
+  focusHome?: () => HTMLElement | null;
   /**
    * A press on the reading surface (an element marked `data-reading-surface`, or inside a book
    * iframe, which reports it as a `reader-pointer-down` event). Return true if it closed a panel:
@@ -86,7 +84,7 @@ interface Props {
  * Reader layout frame. The reading area fills the window; the top bar and footer overlay it
  * (opacity only, they never reflow text) and auto-hide per PRD 6.8.
  */
-export function ReaderChrome({
+export const ReaderChrome = memo(function ReaderChrome({
   title,
   leading,
   actions,
@@ -97,18 +95,14 @@ export function ReaderChrome({
   readout,
   theme,
   menuOpen: menuOpenProp = false,
-  pinned: pinnedProp,
-  keyboardPin = true,
-  onPinnedChange,
+  pinned = false,
   onVisibleChange,
   onClose,
-  onMenusClosed,
+  focusHome,
   onSurfacePress,
   children,
   autoHideDelayMs = HIDE_GRACE_MS,
 }: Props) {
-  const [pinnedState, setPinnedState] = useState(false);
-  const pinned = pinnedProp ?? pinnedState;
   const [pointerInZone, setPointerInZone] = useState(false);
   const [hovering, setHovering] = useState(false);
   const [focusWithin, setFocusWithin] = useState(false);
@@ -116,83 +110,33 @@ export function ReaderChrome({
   const [layoutOpen, setLayoutOpen] = useState(false);
   const [commandsOpen, setCommandsOpen] = useState(false);
   const menuOpen = menuOpenProp || layoutOpen || commandsOpen;
-  const barRef = useRef<HTMLDivElement>(null);
-  const wasOwnMenuOpen = useRef(false);
-  // When any menu, popover or panel closes, focus returns to the text so the idle rule hides the
-  // chrome again (the trigger would otherwise keep focusWithin true forever).
-  useEffect(() => {
-    const was = wasOwnMenuOpen.current;
-    wasOwnMenuOpen.current = menuOpen;
-    if (!was || menuOpen) return;
-    const t = window.setTimeout(() => {
-      const a = document.activeElement as HTMLElement | null;
-      // Focus is still in the closing popup, on the trigger or nowhere: hand it to the reader.
-      if (
-        !a ||
-        a === document.body ||
-        barRef.current?.contains(a) ||
-        a.closest('[role="dialog"], [role="menu"]')
-      ) {
-        (onMenusClosed ?? (() => a?.blur()))();
-        setFocusWithin(false);
-      }
-    }, 0);
-    return () => window.clearTimeout(t);
-  }, [menuOpen, onMenusClosed]);
-  // Pressing the reading surface closes the Layout popover and any panel the owner reports (t24u).
-  // Base UI closes the popover itself for presses in the host document, so a window-capture
-  // snapshot (taken before it does) decides whether the press was an outside press; a press inside
-  // a book iframe never reaches this document, the iframe reports it instead.
+  // Pressing the reading surface closes an open popover/menu and any panel the owner reports
+  // (t24u); such a press is consumed for its whole lifetime (#12, PressArbiter). What was open is
+  // read from the overlay store when the press starts (Base UI's own close commits later). A press
+  // inside a book iframe never reaches this document: the iframe reports it and consumes it there.
   const readingRef = useRef<HTMLElement>(null);
-  const layoutOpenRef = useRef(false);
   const pressRef = useRef(onSurfacePress);
   useEffect(() => {
-    layoutOpenRef.current = layoutOpen;
     pressRef.current = onSurfacePress;
   });
   useEffect(() => {
     const main = readingRef.current;
     if (!main) return;
-    let layoutAtPress = false;
-    const snapshot = () => {
-      layoutAtPress = layoutOpenRef.current;
-    };
     const onSurface = (e: Event) => {
       const target = e.target as Element | null;
       if (!target?.closest?.('[data-reading-surface]')) return;
       const fromBook = e.type === 'reader-pointer-down';
       if (!fromBook && (e as PointerEvent).button !== 0) return;
-      const layoutWas = fromBook ? layoutOpenRef.current : layoutAtPress;
+      const popupOpen = overlays.has('modal');
       const closed = pressRef.current?.() ?? false;
-      if (!layoutWas && !closed) return;
+      if (!popupOpen && !closed) return;
       setLayoutOpen(false);
-      if (fromBook) {
-        (e as CustomEvent<{ consumed: boolean }>).detail.consumed = true;
-        return;
-      }
-      // Host-document press (page margin): keep it from selecting or turning a page.
-      const stop = (ev: Event) => {
-        ev.preventDefault();
-        ev.stopImmediatePropagation();
-      };
-      const done = () => {
-        main.removeEventListener('mousedown', stop, true);
-        main.removeEventListener('click', onClick, true);
-        window.clearTimeout(timer);
-      };
-      const onClick = (ev: Event) => {
-        stop(ev);
-        done();
-      };
-      const timer = window.setTimeout(done, 1000);
-      main.addEventListener('mousedown', stop, true);
-      main.addEventListener('click', onClick, true);
+      if (fromBook) (e as CustomEvent<{ consumed: boolean }>).detail.consumed = true;
+      else consumePress(main); // page margin: no selection, no page turn
     };
-    window.addEventListener('pointerdown', snapshot, true);
     main.addEventListener('pointerdown', onSurface, true);
     main.addEventListener('reader-pointer-down', onSurface);
     return () => {
-      window.removeEventListener('pointerdown', snapshot, true);
       main.removeEventListener('pointerdown', onSurface, true);
       main.removeEventListener('reader-pointer-down', onSurface);
     };
@@ -228,23 +172,6 @@ export function ReaderChrome({
 
   useEffect(() => onVisibleChange?.(visible), [visible, onVisibleChange]);
 
-  // H pins (the keyboard system, M7, will take over this binding).
-  const pinRef = useRef({ pinned, onPinnedChange });
-  useEffect(() => {
-    pinRef.current = { pinned, onPinnedChange };
-  });
-  useEffect(() => {
-    if (!keyboardPin) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (!isPinKey(e)) return;
-      const { pinned: p, onPinnedChange: cb } = pinRef.current;
-      setPinnedState(!p);
-      cb?.(!p);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [keyboardPin]);
-
   // Pointer position over the host document (the top strip below covers iframes).
   useEffect(() => {
     const onMove = (e: PointerEvent) => setPointerInZone(inRevealZone(e.clientY));
@@ -257,14 +184,26 @@ export function ReaderChrome({
     };
   }, []);
 
-  // Hover / focus keep the chrome up; shared by the bar and the footer.
+  // Hover / focus keep the chrome up; shared by the bar and the footer. Focus is read from the DOM
+  // (native focusin/focusout + contains): React's synthetic focus events bubble out of portaled
+  // menus, and a popup that unmounts while focused never blurs, which left the bar stuck visible.
+  const topRef = useRef<HTMLDivElement>(null);
+  const footRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const update = () => {
+      const a = document.activeElement;
+      setFocusWithin(!!a && a !== document.body && !!(topRef.current?.contains(a) || footRef.current?.contains(a)));
+    };
+    document.addEventListener('focusin', update);
+    document.addEventListener('focusout', update);
+    return () => {
+      document.removeEventListener('focusin', update);
+      document.removeEventListener('focusout', update);
+    };
+  }, []);
   const sensors = {
     onPointerEnter: () => setHovering(true),
     onPointerLeave: () => setHovering(false),
-    onFocus: () => setFocusWithin(true),
-    onBlur: (e: FocusEvent<HTMLElement>) => {
-      if (!e.currentTarget.contains(e.relatedTarget)) setFocusWithin(false);
-    },
   };
 
   const style = useMemo(() => {
@@ -296,7 +235,7 @@ export function ReaderChrome({
             label="Layout"
             open={layoutOpen}
             onOpenChange={setLayoutOpen}
-            restoreFocus={!onMenusClosed}
+            focusHome={focusHome}
             trigger={
               <button type="button" className={styles.textButton} aria-label="Layout">
                 Layout
@@ -347,7 +286,7 @@ export function ReaderChrome({
         {commands ? (
           <Menu
             onOpenChange={setCommandsOpen}
-            restoreFocus={!onMenusClosed}
+            focusHome={focusHome}
             items={commands}
             trigger={
               <button type="button" className={styles.iconButton} aria-label="More">
@@ -373,7 +312,7 @@ export function ReaderChrome({
       />
 
       <div className={styles.chrome} data-visible={visible}>
-        <div ref={barRef} className={styles.top} {...sensors}>
+        <div ref={topRef} className={styles.top} {...sensors}>
           <TitleBar
             title={title}
             leading={leading}
@@ -389,14 +328,14 @@ export function ReaderChrome({
           </div>
         ) : null}
         {footer ? (
-          <footer className={styles.footer} style={footerStyle} {...sensors}>
+          <footer ref={footRef} className={styles.footer} style={footerStyle} {...sensors}>
             {footer}
           </footer>
         ) : null}
       </div>
     </div>
   );
-}
+});
 
 const ChevronGlyph = () => (
   <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" className={styles.chevron}>

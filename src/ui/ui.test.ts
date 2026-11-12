@@ -6,7 +6,6 @@ import {
   chromeWantsVisible,
   fadeMs,
   inRevealZone,
-  isPinKey,
 } from './chromeReveal';
 import { TOOLTIP_DELAY_MS, tooltipDelay } from './tooltipTiming';
 import { captionRectsValid, createLatestSender, measureCaptionRects } from './captionRects';
@@ -37,21 +36,6 @@ describe('chrome reveal', () => {
   it('fades in faster than out', () => {
     expect(fadeMs(true)).toBe(100);
     expect(fadeMs(false)).toBe(HIDE_FADE_MS);
-  });
-  it('H pins only without modifiers outside text fields', () => {
-    const base = {
-      key: 'h',
-      ctrlKey: false,
-      altKey: false,
-      metaKey: false,
-      target: { tagName: 'DIV' },
-    };
-    expect(isPinKey(base)).toBe(true);
-    expect(isPinKey({ ...base, key: 'H' })).toBe(true);
-    expect(isPinKey({ ...base, ctrlKey: true })).toBe(false);
-    expect(isPinKey({ ...base, target: { tagName: 'INPUT' } })).toBe(false);
-    expect(isPinKey({ ...base, target: { isContentEditable: true } })).toBe(false);
-    expect(isPinKey({ ...base, key: 'j' })).toBe(false);
   });
 });
 

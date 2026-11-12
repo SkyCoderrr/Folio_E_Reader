@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
-import { buildTocSpans } from '../toc/tocModel';
-import { footerReadout } from './footerReadout';
+import { buildTocSpans, classifyToc, tocOrdinal, type TocSpan } from '../toc/tocModel';
+import { footerReadout as readout } from './footerReadout';
+import type { FooterProgress } from '@contract/types';
+
+const footerReadout = (mode: FooterProgress, s: readonly TocSpan[], pos?: { sectionIndex: number; progress: number }) =>
+  readout(mode, tocOrdinal(s, classifyToc(s, pos).currentKey), pos?.progress);
 
 const toc = [
   { label: 'A', href: 's0.html', subitems: [{ label: 'A1', href: 's1.html' }] },
@@ -11,8 +15,8 @@ const toc = [
 ];
 const info = {
   resolve: (h: string) => ({ 's0.html': 0, 's1.html': 1, 's2.html': 2, 's3.html': 3 })[h] ?? null,
-  sizes: [10, 10, 10, 10],
-  format: 'epub' as const,
+  weights: [10, 10, 10, 10],
+  chapterKey: (start: number) => `s:${start}#`,
 };
 const spans = buildTocSpans(toc, info);
 const at = (sectionIndex: number, progress: number) => ({ sectionIndex, progress });

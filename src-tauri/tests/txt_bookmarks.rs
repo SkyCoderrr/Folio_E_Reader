@@ -188,7 +188,13 @@ fn invalid_regex_and_fancy_lookahead() {
         ErrorCode::TxtRegexInvalid
     );
     assert!(split::regex("x", 3).is_err());
-    let parts = split::split("Chapter I\nbody", r"^Chapter (?=I)I$", 40, 10000).unwrap();
+    let parts = split::split(
+        "Chapter I\nbody\nChapter I\nmore",
+        r"^Chapter (?=I)I$",
+        40,
+        10000,
+    )
+    .unwrap();
     assert_eq!(parts[0].title, "Chapter I");
 }
 #[test]

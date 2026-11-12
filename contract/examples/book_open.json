@@ -1,5 +1,7 @@
 {
-  "args": { "bookId": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d" },
+  "args": {
+    "bookId": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d"
+  },
   "result": {
     "book": {
       "id": "3f2a9c0d1b7e4a65c8d90f1e2b3a4c5d",
@@ -26,6 +28,21 @@
       "progress": 0.1834,
       "snippet": "It was the best of times, it was"
     },
-    "txtPrefs": null
+    "txtPrefs": null,
+    "epubMetrics": {
+      "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sectionChars": [
+        100,
+        200
+      ],
+      "tocFragmentOffsets": {
+        "chapter.xhtml#start": 20
+      }
+    },
+    "statsSeed": {
+      "activeMs": 300000,
+      "chars": 1500,
+      "charsPerMin": 300
+    }
   }
 }

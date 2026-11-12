@@ -41,7 +41,6 @@ pub fn change_with_commit(
     commit: impl FnOnce(&LoadedSettings) -> Result<(), AppError>,
 ) -> Result<LibrarySetFolderResult, AppError> {
     let destination = profile.validate_library(path.map(Path::new).unwrap_or(default))?;
-    let default = profile.validate_library(default)?;
     db.available()?;
     let mut result = LibrarySetFolderResult {
         library_dir: destination.to_string_lossy().into_owned(),
@@ -50,7 +49,7 @@ pub fn change_with_commit(
     };
     let same =
         within(&destination, &settings.library_dir) && within(&settings.library_dir, &destination);
-    let folder = if within(&destination, &default) && within(&default, &destination) {
+    let folder = if within(&destination, default) && within(default, &destination) {
         None
     } else {
         Some(result.library_dir.clone())

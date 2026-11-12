@@ -94,7 +94,8 @@ impl Journal {
                 .contains(&name.to_owned()))
                 || entry.path == db.profile.covers.join(format!("{id}.jpg"))
         } else {
-            entry.path.parent() == Some(db.library_dir().as_path())
+            (entry.path.parent() == Some(db.library_dir().as_path())
+                || entry.path.parent() == Some(db.profile.covers.as_path()))
                 && name.starts_with(".import-")
                 && name.ends_with(".tmp")
         };

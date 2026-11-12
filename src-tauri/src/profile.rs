@@ -170,7 +170,16 @@ pub fn library_files(root: &Path) -> Vec<PathBuf> {
             }
         })
         .filter_map(|entry| match entry {
-            Ok(entry) if entry.file_type().is_file() => Some(entry.into_path()),
+            Ok(entry) if entry.file_type().is_file() => match fs::File::open(entry.path()) {
+                Ok(_) => Some(entry.into_path()),
+                Err(e) => {
+                    log::warn!(
+                        "Skipping unreadable library file {}: {e}",
+                        entry.path().display()
+                    );
+                    None
+                }
+            },
             Ok(_) => None,
             Err(e) => {
                 log::warn!("Skipping unreadable library entry: {e}");

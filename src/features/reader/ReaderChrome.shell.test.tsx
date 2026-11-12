@@ -8,10 +8,27 @@ import { chromeColors, contrast } from './ReaderChrome.colors';
 
 vi.mock('../../ui/TitleBar', () => ({ TitleBar: ({ actions }: { actions: ReactNode }) => <div>{actions}</div> }));
 vi.mock('../../ui/Popover', () => ({
-  Popover: ({ children, onOpenChange, trigger }: { children: ReactNode; onOpenChange?: (o: boolean) => void; trigger: ReactNode }) => (
+  Popover: ({
+    children,
+    onOpenChange,
+    focusHome,
+    trigger,
+  }: {
+    children: ReactNode;
+    onOpenChange?: (o: boolean) => void;
+    focusHome?: () => HTMLElement | null;
+    trigger: ReactNode;
+  }) => (
     <div>
       <button type="button" data-testid="open" onClick={() => onOpenChange?.(true)} />
-      <button type="button" data-testid="close" onClick={() => onOpenChange?.(false)} />
+      <button
+        type="button"
+        data-testid="close"
+        onClick={() => {
+          onOpenChange?.(false);
+          focusHome?.()?.focus(); // Base UI finalFocus on a pointer close (ui/closeFocus)
+        }}
+      />
       {trigger}
       {children}
     </div>
@@ -52,19 +69,21 @@ it('the footer stays readable on every preset while the shell tokens stay dark',
   }
 });
 
-it('closing the Layout menu with focus left in the bar hands focus back and the chrome hides again', async () => {
+it('closing the Layout menu hands focus to the text (focusHome) and the chrome hides again', async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.useFakeTimers();
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
-  const back = vi.fn();
+  const text = document.createElement('div');
+  text.tabIndex = -1;
+  document.body.append(text);
   await act(async () =>
     root.render(
       <ReaderChrome
         autoHideDelayMs={100}
         layout={{ pagesPerView: 1, onPagesPerViewChange: () => undefined }}
-        onMenusClosed={back}
+        focusHome={() => text}
       >
         <div>Book</div>
       </ReaderChrome>,
@@ -76,11 +95,10 @@ it('closing the Layout menu with focus left in the bar hands focus back and the 
   await act(async () => trigger.focus());
   expect(chrome().dataset.visible).toBe('true');
   await act(async () => (container.querySelector('[data-testid="close"]') as HTMLElement).click());
-  await act(async () => void vi.advanceTimersByTime(1));
-  expect(back).toHaveBeenCalled();
-  await act(async () => trigger.blur());
+  expect(document.activeElement).toBe(text);
   await act(async () => void vi.advanceTimersByTime(300));
   expect(chrome().dataset.visible).toBe('false');
   vi.useRealTimers();
   root.unmount();
+  text.remove();
 });

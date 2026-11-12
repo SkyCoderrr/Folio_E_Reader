@@ -1,7 +1,7 @@
 /**
  * E_Reader IPC contract: TypeScript types.
  *
- * Contract version 0.8.0 (see contract/README.md). Owner: Dany_PM.
+ * Contract version 0.9.0 (see contract/README.md). Owner: Dany_PM.
  * Agents never edit this file; propose changes in .agent-logs/conversation.md.
  *
  * Rules (full text in README.md and rust-types.md):
@@ -16,7 +16,7 @@
  * The matching Rust definitions are in contract/rust-types.md (one-to-one, same names).
  */
 
-export const CONTRACT_VERSION = '0.8.0' as const;
+export const CONTRACT_VERSION = '0.9.0' as const;
 
 // ───────────────────────────── Primitives ─────────────────────────────
 
@@ -434,7 +434,7 @@ export type Keybindings = Partial<Record<ActionId, Chord[]>>;
 
 /** The complete, effective settings object. Returned by settings_get; validated by settings.schema.json. */
 export interface Settings {
-  /** Schema version of the settings model. Always 1 in contract 0.8.0. */
+  /** Schema version of the settings model. Always 1 in contract 0.9.0. */
   version: 1;
   activePresetId: PresetId;
   presets: Preset[];
@@ -586,6 +586,22 @@ export interface LibraryRemoveResult {
   fileErrors: FileError[];
 }
 
+/** UTF-16 body-text measurements, bound to the full BLAKE3 file hash. */
+export interface EpubSectionChars {
+  fileHash: string;
+  /** Empty on a cache miss; null entries are failed sections, retried on the next open. */
+  sectionChars: (number | null)[];
+  tocFragmentOffsets: Record<string, number>;
+}
+export interface BookStatsSeed {
+  activeMs: number;
+  chars: number;
+  charsPerMin: number | null;
+}
+export interface BookSetSectionCharsArgs {
+  bookId: BookId;
+  metrics: EpubSectionChars;
+}
 export interface BookOpenResult {
   /** The record after the open (lastOpenedAt updated). */
   book: BookRecord;
@@ -593,6 +609,9 @@ export interface BookOpenResult {
   locator: Locator | null;
   /** TXT: per-book prefs (never null for TXT). EPUB: null. */
   txtPrefs: TxtBookPrefs | null;
+  /** Null for TXT; EPUB always includes the current file hash, even on a cache miss. */
+  epubMetrics: EpubSectionChars | null;
+  statsSeed: BookStatsSeed;
 }
 
 export interface PositionSaveArgs {
@@ -789,6 +808,7 @@ export interface BookSetTotalCharsArgs {
 
 /** Command name → args object passed to invoke() and the resolved result. */
 export interface Commands {
+  book_set_section_chars: { args: BookSetSectionCharsArgs; result: null };
   // M0
   app_info: { args: EmptyArgs; result: AppInfo };
   app_quit: { args: EmptyArgs; result: null };

@@ -66,3 +66,11 @@ describe('tint contrast', () => {
     }
   });
 });
+
+it('disables switch and tab indicator transitions under reduced motion', () => {
+  const css = readFileSync(join(SRC, 'ui/kit.module.css'), 'utf8');
+  const reduced = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/)?.[1];
+  expect(reduced).toContain('.switchThumb');
+  expect(reduced).toContain('.tabIndicator');
+  expect(reduced).toMatch(/transition:\s*none/);
+});

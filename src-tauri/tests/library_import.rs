@@ -57,7 +57,7 @@ fn job(db: &Database, paths: Vec<String>) -> Vec<ImportEvent> {
     let events = Mutex::new(Vec::new());
     import::run_job(
         db,
-        &Mutex::new(()),
+        &import::FileAccess::default(),
         &mut Journal::load(db).unwrap(),
         LibraryImportArgs {
             job_id: "test-job".into(),

@@ -4,6 +4,7 @@
  * and a ResizeObserver to the same-origin document; Chromium runs those parent-realm callbacks even
  * without `allow-scripts` (foliate-js needs allow-scripts only for a WebKit bug, ADR-001).
  */
+import { consumePress } from '../../input/pressArbiter';
 import { buildSectionText, type SectionText } from './sectionText';
 
 const XHTML_NS = 'http://www.w3.org/1999/xhtml';
@@ -148,7 +149,7 @@ export class SectionFrame {
           detail: { consumed: false },
         });
         this.iframe.dispatchEvent(press);
-        if (press.detail.consumed) this.#swallowPress(doc);
+        if (press.detail.consumed && doc.defaultView) consumePress(doc.defaultView);
       },
       { passive: true, capture: true },
     );
@@ -173,28 +174,6 @@ export class SectionFrame {
     void doc.fonts?.ready.then(() => {
       if (!this.#destroyed && this.ready) this.#hooks.onContentResize(this);
     });
-  }
-
-  /** Cancel the rest of this press (mousedown default = selection/focus, then the click). */
-  #swallowPress(doc: Document): void {
-    const win = doc.defaultView;
-    if (!win) return;
-    const stop = (e: Event): void => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-    };
-    const done = (): void => {
-      win.removeEventListener('mousedown', stop, true);
-      win.removeEventListener('click', onClick, true);
-      window.clearTimeout(timer);
-    };
-    const onClick = (e: Event): void => {
-      stop(e);
-      done();
-    };
-    const timer = window.setTimeout(done, 1000);
-    win.addEventListener('mousedown', stop, true);
-    win.addEventListener('click', onClick, true);
   }
 
   #onResize(): void {

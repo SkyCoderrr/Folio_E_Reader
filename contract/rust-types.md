@@ -1,4 +1,4 @@
-# Rust types (contract v0.8.0)
+# Rust types (contract v0.9.0)
 
 These are the Rust definitions that match [`types.ts`](types.ts) one-to-one. Every TS type has a Rust type of the **same name**, and every field matches. Codex pastes these into `src-tauri/src/contract/` (for example `contract/mod.rs`, split into files if needed) and does not change names, field types or serde attributes. A change here is a contract change (README › Change process).
 
@@ -34,11 +34,11 @@ Other rules:
 ## Code
 
 ```rust
-// src-tauri/src/contract/mod.rs — contract v0.8.0. Do not edit; see contract/README.md.
+// src-tauri/src/contract/mod.rs — contract v0.9.0. Do not edit; see contract/README.md.
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-pub const CONTRACT_VERSION: &str = "0.8.0";
+pub const CONTRACT_VERSION: &str = "0.9.0";
 
 // ───────────── Primitives ─────────────
 // All integer IPC values must be safe integers (unsigned <= 9007199254740991;
@@ -470,7 +470,7 @@ pub type Keybindings = BTreeMap<ActionId, Vec<Chord>>;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Settings {
-    pub version: u32, // always 1 in contract 0.8.0
+    pub version: u32, // always 1 in contract 0.9.0
     pub active_preset_id: PresetId,
     pub presets: Vec<Preset>,
     pub style_overrides: ReadingStylePatch,
@@ -597,10 +597,30 @@ pub struct LibraryRemoveResult { pub removed_ids: Vec<BookId>, pub file_errors: 
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EpubSectionChars {
+    pub file_hash: String,
+    pub section_chars: Vec<Option<u64>>,
+    pub toc_fragment_offsets: BTreeMap<String, u64>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BookStatsSeed {
+    pub active_ms: u64,
+    pub chars: u64,
+    pub chars_per_min: Option<f64>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BookSetSectionCharsArgs { pub book_id: BookId, pub metrics: EpubSectionChars }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BookOpenResult {
     pub book: BookRecord,
     pub locator: Option<Locator>,
     pub txt_prefs: Option<TxtBookPrefs>,
+    pub epub_metrics: Option<EpubSectionChars>,
+    pub stats_seed: BookStatsSeed,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

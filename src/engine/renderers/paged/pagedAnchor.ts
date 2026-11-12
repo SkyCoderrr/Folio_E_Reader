@@ -3,8 +3,7 @@
  * the view: the top of its left page (column) (PRD §9.4). A target character is shown by moving
  * the strip so that its column is the left page.
  */
-import { bisectByKey } from '../grid/gridAnchor';
-import { caretAt, type SectionText } from '../flow/sectionText';
+import { caretAt, rangeAtOffset, type SectionText } from '../flow/sectionText';
 import { columnOfX, pagedKey, type PagedGeometry } from './pagedMath';
 
 const TEXT_NODE = 3;
@@ -88,4 +87,58 @@ export function contentRight(doc: Document): number {
   r.selectNodeContents(body);
   const rect = r.getBoundingClientRect();
   return rect.width > 0 || rect.height > 0 ? rect.right : 0;
+}
+
+/** Monotonic reading-order key of a point in a section document (paged: column, then y). */
+export type PointKey = (x: number, y: number) => number;
+
+/** Reading key of the first (or, with `last`, the greatest) non-empty rect, at its vertical centre. */
+function keyOf(rects: DOMRectList, key: PointKey, last: boolean): number {
+  let out = -Infinity;
+  for (let i = 0; i < rects.length; i++) {
+    const r = rects[i]!;
+    if (r.height <= 0) continue;
+    const k = key(r.left + 1, (r.top + r.bottom) / 2);
+    if (!last) return k;
+    out = Math.max(out, k);
+  }
+  return out;
+}
+
+/**
+ * First character whose reading key is greater than `target`: bisection over inked text nodes,
+ * then over the characters of the node found. Also used by the paginator (paged/pagedAnchor.ts).
+ */
+export function bisectByKey(doc: Document, t: SectionText, target: number, key: PointKey): Range {
+  const inked = (t.inked ??= t.nodes.flatMap((n, i) => (/\S/.test(n.data) ? [i] : [])));
+  const r = doc.createRange();
+  const endKey = (i: number): number => {
+    r.selectNodeContents(t.nodes[i]!);
+    return keyOf(r.getClientRects(), key, true);
+  };
+  let lo = 0;
+  let hi = inked.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (endKey(inked[mid]!) > target) hi = mid;
+    else lo = mid + 1;
+  }
+  if (lo >= inked.length) return rangeAtOffset(doc, t, t.total);
+  const node = t.nodes[inked[lo]!]!;
+  const charKey = (k: number): number => {
+    r.setStart(node, k);
+    r.setEnd(node, k + 1);
+    return keyOf(r.getClientRects(), key, false);
+  };
+  let a = 0;
+  let b = node.data.length - 1;
+  while (a < b) {
+    const mid = (a + b) >> 1;
+    if (charKey(mid) > target) b = mid;
+    else a = mid + 1;
+  }
+  const out = doc.createRange();
+  out.setStart(node, Math.max(0, a));
+  out.collapse(true);
+  return out;
 }

@@ -27,26 +27,24 @@ pub async fn txt_prepare(app: tauri::AppHandle, book_id: String) -> Result<TxtMa
     use tauri::Manager;
     let handle = app.clone();
     super::state_worker(app, move |state| {
-        let settings = state
-            .settings
-            .lock()
-            .map_err(crate::storage::io_error)?
-            .effective
-            .txt
-            .clone();
-        let _guard = state.library.mutation.lock().map_err(crate::db::db_error)?;
-        let manifest = state.library.db.txt_prepare(&book_id, &settings)?;
-        for section in &manifest.sections {
-            state
-                .library
-                .db
-                .managed_path(std::path::Path::new(&section.path))?;
-            handle
-                .asset_protocol_scope()
-                .allow_file(&section.path)
-                .map_err(crate::storage::io_error)?;
-        }
-        Ok(manifest)
+        let settings = state.settings.snapshot()?.effective.txt;
+        state
+            .library
+            .access
+            .with_books(std::slice::from_ref(&book_id), || {
+                let manifest = state.library.db.txt_prepare(&book_id, &settings)?;
+                for section in &manifest.sections {
+                    state
+                        .library
+                        .db
+                        .managed_path(std::path::Path::new(&section.path))?;
+                    handle
+                        .asset_protocol_scope()
+                        .allow_file(&section.path)
+                        .map_err(crate::storage::io_error)?;
+                }
+                Ok(manifest)
+            })
     })
     .await
 }
@@ -59,8 +57,9 @@ pub async fn txt_preview_split(
     heading_max_chars: u32,
 ) -> Result<TxtPreviewSplitResult, AppError> {
     worker(state.library.clone(), "txt_preview_split", move |l| {
-        let _guard = l.mutation.lock().map_err(crate::db::db_error)?;
-        l.db.txt_preview_split(&book_id, &chapter_regex, heading_max_chars)
+        l.access.with_books(std::slice::from_ref(&book_id), || {
+            l.db.txt_preview_split(&book_id, &chapter_regex, heading_max_chars)
+        })
     })
     .await
 }
@@ -71,8 +70,9 @@ pub async fn txt_prefs_set(
     patch: serde_json::Value,
 ) -> Result<TxtBookPrefs, AppError> {
     worker(state.library.clone(), "txt_prefs_set", move |l| {
-        let _guard = l.mutation.lock().map_err(crate::db::db_error)?;
-        l.db.txt_prefs_set(&book_id, patch)
+        l.access.with_books(std::slice::from_ref(&book_id), || {
+            l.db.txt_prefs_set(&book_id, patch)
+        })
     })
     .await
 }
@@ -153,6 +153,20 @@ pub async fn book_set_total_chars(
 ) -> Result<(), AppError> {
     worker(state.library.clone(), "book_set_total_chars", move |l| {
         l.db.book_set_total_chars(&book_id, total_chars)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn book_set_section_chars(
+    state: State<'_, AppState>,
+    book_id: String,
+    metrics: EpubSectionChars,
+) -> Result<(), AppError> {
+    worker(state.library.clone(), "book_set_section_chars", move |l| {
+        l.access.with_books(std::slice::from_ref(&book_id), || {
+            l.db.book_set_section_chars(&book_id, metrics)
+        })
     })
     .await
 }

@@ -9,6 +9,7 @@
     "core:event:allow-unlisten",
     "allow-existing-app-commands",
     "allow-chapters-read-get",
-    "allow-chapter-mark-read"
+    "allow-chapter-mark-read",
+    "allow-book-set-section-chars"
   ]
 }

@@ -1,4 +1,4 @@
-# Settings (contract v0.8.0)
+# Settings (contract v0.9.0)
 
 Source: PRD §8 (the closed list of v1 settings) and §9.2. Files:
 
@@ -42,7 +42,7 @@ Use one native validator during settings load and `library_set_folder`: require 
 
 `chrome.footerProgress` belongs to chrome because it controls reader presentation, independently of reading-style presets (scope G). `off` hides the readout; `percent` shows book percentage; `chapter` shows current/total chapters (for example 6/24); `both` shows both. The readout lives in the existing in-page footer and remains visible while chrome is hidden; it creates no extra bar. Changes apply live through the existing settings commands/events.
 
-Contract 0.8.0 keeps settings schema version 1: existing files missing `chrome.footerProgress` load as `off` through the defaults merge, preserve other values/unknown keys, and persist the new key on the next settings change. Invalid on-disk values repair to `off`; invalid IPC writes return `SETTINGS_INVALID`. A null patch resets it to `off`.
+Contract 0.9.0 keeps settings schema version 1: existing files missing `chrome.footerProgress` load as `off` through the defaults merge, preserve other values/unknown keys, and persist the new key on the next settings change. Invalid on-disk values repair to `off`; invalid IPC writes return `SETTINGS_INVALID`. A null patch resets it to `off`.
 
 ## 3. Load (startup, lenient)
 

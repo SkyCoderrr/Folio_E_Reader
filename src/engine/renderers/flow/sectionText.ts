@@ -126,7 +126,7 @@ interface CaretDoc {
   caretRangeFromPoint?(x: number, y: number): Range | null;
 }
 
-/** Caret position at a point in `doc` (also used by grid/gridAnchor.ts). */
+/** Caret position at a point in `doc`. */
 export function caretAt(doc: Document, x: number, y: number): { node: Node; offset: number } | null {
   const d = doc as unknown as CaretDoc;
   if (typeof d.caretPositionFromPoint === 'function') {

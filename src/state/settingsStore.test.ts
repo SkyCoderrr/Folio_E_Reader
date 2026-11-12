@@ -1,4 +1,4 @@
-﻿import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { Settings, SettingsPatch } from '@contract/types';
 import defaults from '../../contract/settings.defaults.json';
 import { createSettingsStore } from './settingsStore';
@@ -197,21 +197,10 @@ it('keeps failed edits for a later flush and surfaces the error', async () => {
   expect(disk.styleOverrides.font?.size).toBe(25);
   expect(state().error).toBeNull();
 });
-it('migrates a valid legacy preference once and clears the old kv', async () => {
-  legacy = 2;
+it('#24: loading reads settings only (no legacy kv round trip)', async () => {
   store = createSettingsStore();
   await state().load();
-  expect(state().settings.reader.pagesPerView).toBe(2);
-  expect(legacy).toBeNull();
-  expect(disk.reader.pagesPerView).toBe(2);
-});
-it('does not replace a non-default settings preference with legacy kv', async () => {
-  legacy = 1;
-  disk.reader.pagesPerView = 2;
-  store = createSettingsStore();
-  await state().load();
-  expect(state().settings.reader.pagesPerView).toBe(2);
-  expect(legacy).toBeNull();
+  expect(ipc.invoke.mock.calls.map(([command]) => command)).toEqual(['settings_get']);
 });
 it('keeps the 300ms debounce for edits made during an automatic write', async () => {
   let finish!: (value: Settings) => void;

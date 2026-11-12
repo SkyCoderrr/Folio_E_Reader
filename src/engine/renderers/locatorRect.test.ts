@@ -4,7 +4,6 @@ import type { Locator } from '@contract/types';
 import { locatorViewportRect } from './locatorRect';
 import { SectionFrame } from './flow/sectionFrame';
 import { FlowRenderer } from './FlowRenderer';
-import { PageGridRenderer } from './PageGridRenderer';
 import { PaginatorRenderer } from './PaginatorRenderer';
 
 const locator: Locator = {
@@ -103,7 +102,7 @@ it('rejects hidden frames, empty text and unmounted renderers without side effec
   const r = rig();
   r.frame.iframe.style.visibility = 'hidden';
   expect(r.rect()).toBeNull();
-  for (const renderer of [new FlowRenderer(), new PageGridRenderer(), new PaginatorRenderer()])
+  for (const renderer of [new FlowRenderer(), new PaginatorRenderer()])
     expect(renderer.getLocatorRect(locator)).toBeNull();
 });
 

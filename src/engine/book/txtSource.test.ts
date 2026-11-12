@@ -82,6 +82,7 @@ it('round trips a TXT locator using UTF-16 and prioritizes its global offset aft
     { index: 1, range, viewportY: 0, fraction: 0 },
     [10, 10],
     bridge,
+    false,
   );
   expect(locator).toMatchObject({ charOffset: 3, globalCharOffset: 13, cfi: null });
   expect(bridge.fromGlobalCharOffset!(locator.globalCharOffset!)).toEqual({

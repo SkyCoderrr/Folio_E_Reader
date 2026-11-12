@@ -1,3 +1,4 @@
+import { errorCopy } from '../../ipc/errorCopy';
 import type { TxtPrefsPatch } from '@contract/types';
 import { invoke } from '../../ipc/commands';
 import { useSettings } from '../../state/settingsStore';
@@ -44,8 +45,8 @@ export function chapterPreviewDebouncer(
     },
   };
 }
-export const message = (error: unknown) =>
-  String((error as { message?: string })?.message ?? error);
+/** #10: user copy for the failure (TXT_DECODE_FAILED, TXT_REGEX_INVALID, ...), never its message. */
+export const message = errorCopy;
 
 export async function prepareTxtPreferences(bookId: string, patch: TxtPrefsPatch) {
   const prefs = await invoke('txt_prefs_set', { bookId, patch });

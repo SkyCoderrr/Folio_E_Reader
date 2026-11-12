@@ -345,3 +345,15 @@ fn folder_commit_uses_short_settings_section_and_preserves_concurrent_changes() 
             .enabled
     );
 }
+
+#[test]
+fn choosing_custom_folder_does_not_require_the_default_root_to_be_valid() {
+    let (temp, db, mut settings) = fixture();
+    let default = db.library_dir();
+    fs::write(&default, "default folder is unavailable").unwrap();
+    let destination = temp.path().join("available");
+    change(&db, &mut settings, destination.to_str(), false).unwrap();
+    assert_eq!(db.library_dir(), destination);
+    assert!(!db.library_offline());
+    assert!(settings.effective.library.folder.is_some());
+}

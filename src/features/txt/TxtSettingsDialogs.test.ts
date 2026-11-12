@@ -2,7 +2,11 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { chapterDefaults, chapterPreviewDebouncer, prepareTxtPreferences } from './txtSettings';
 import { invoke } from '../../ipc/commands';
 import { useSettings } from '../../state/settingsStore';
-vi.mock('../../ipc/commands', () => ({ invoke: vi.fn() }));
+vi.mock('../../ipc/commands', async (original) => ({
+  ...(await original<typeof import('../../ipc/commands')>()),
+  invoke: vi.fn(),
+}));
+const REGEX_COPY = 'The chapter pattern is not valid.'; // #10: user copy, not the message
 afterEach(() => {
   vi.useRealTimers();
   vi.resetAllMocks();
@@ -49,9 +53,9 @@ it('discards responses from an older preview and reports current errors', async 
   finish({ count: 99, first20: [] });
   await Promise.resolve();
   expect(publish).toHaveBeenLastCalledWith({ state: 'loading' });
-  vi.mocked(invoke).mockRejectedValueOnce({ message: 'Invalid regex' });
+  vi.mocked(invoke).mockRejectedValueOnce({ code: 'TXT_REGEX_INVALID', message: 'Invalid regex' });
   await vi.advanceTimersByTimeAsync(250);
-  expect(publish).toHaveBeenLastCalledWith({ state: 'error', error: 'Invalid regex' });
+  expect(publish).toHaveBeenLastCalledWith({ state: 'error', error: REGEX_COPY });
   preview.cancel();
 });
 
@@ -80,7 +84,7 @@ it('persists an encoding or null chapter overrides before preparing again', asyn
 it('keeps the last valid chapter preview visible during edits and invalid regex errors', async () => {
   vi.useFakeTimers();
   const last = { count: 2, first20: ['Chapter I'] };
-  vi.mocked(invoke).mockResolvedValueOnce(last).mockRejectedValueOnce({ message: 'Invalid regex' });
+  vi.mocked(invoke).mockResolvedValueOnce(last).mockRejectedValueOnce({ code: 'TXT_REGEX_INVALID', message: 'Invalid regex' });
   const publish = vi.fn();
   const preview = chapterPreviewDebouncer('book', publish);
   preview.edit(chapterDefaults);
@@ -88,6 +92,6 @@ it('keeps the last valid chapter preview visible during edits and invalid regex 
   preview.edit({ ...chapterDefaults, chapterRegex: '[' });
   expect(publish).toHaveBeenLastCalledWith({ state: 'loading', ...last });
   await vi.advanceTimersByTimeAsync(250);
-  expect(publish).toHaveBeenLastCalledWith({ state: 'error', error: 'Invalid regex', ...last });
+  expect(publish).toHaveBeenLastCalledWith({ state: 'error', error: REGEX_COPY, ...last });
   preview.cancel();
 });

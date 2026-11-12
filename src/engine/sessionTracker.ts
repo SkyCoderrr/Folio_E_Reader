@@ -11,6 +11,7 @@ export class SessionTracker {
   private session?: ReadingSessionInput;
   private pending: ReadingSessionInput[] = [];
   private flight = Promise.resolve();
+  private failed = false;
   private sampleMs = 0;
   private sampleChars = 0;
   private samples: { ms: number; chars: number }[] = [];
@@ -19,6 +20,7 @@ export class SessionTracker {
     public idleMs: number,
     private save: (session: ReadingSessionInput) => Promise<unknown>,
     private now = Date.now,
+    private onSaveError: (reason: unknown) => void = console.warn,
   ) {
     this.last = this.input = now();
   }
@@ -130,7 +132,14 @@ export class SessionTracker {
       .catch(() => undefined)
       .then(async () => {
         while (this.pending.length) {
-          await this.save(this.pending[0]!);
+          try {
+            await this.save(this.pending[0]!);
+            this.failed = false;
+          } catch (e) {
+            if (!this.failed) this.onSaveError(e);
+            this.failed = true;
+            throw e;
+          }
           this.pending.shift();
         }
       });

@@ -1,23 +1,42 @@
 import type { ScrollSettings } from '@contract/types';
 import defaults from '../../../contract/settings.defaults.json';
-import { browserClock, ScrollAnimation, type FrameClock } from './scrollAnimation';
+import { browserClock, minStep, ScrollAnimation, type FrameClock } from './scrollAnimation';
 export type { FrameClock } from './scrollAnimation';
 
-export interface ScrollTarget {
+/** A view scrolled by pixels (FlowRenderer): held keys glide, release decelerates. */
+export interface ContinuousTarget {
+  readonly kind: 'continuous';
   scrollBy(px: number): void;
   getScrollTop(): number;
   getMaxScroll(): number;
   getLineHeight(): number;
-  /**
-   * Optional press boundaries for targets that move by whole pages (PaginatorRenderer, ADR-005):
-   * holdStart on every key press (before its first scrollBy), holdEnd once the held motion stops
-   * (release, stop, edge). The release glide's scrollBy deltas arrive after holdEnd.
-   */
-  holdStart?(direction: 1 | -1): void;
-  holdEnd?(): void;
+  /** One device pixel in CSS px: the smallest step the view can show (G-PM4). */
+  getPixelSize(): number;
 }
-/** Velocity the key-down ramp starts from: >= 1 px in the first frame at 60 Hz and 120 Hz. */
-export const START_FLOOR_PX_S = 120;
+
+/**
+ * A view that moves by whole pages (PaginatorRenderer, ADR-005). A key press is one hold:
+ * holdStart turns one page at once and says whether the view then follows the held key with
+ * continuous travel (two-page filmstrip) or not (one page per press); holdMove is that travel and
+ * returns false at the book edge; holdEnd (release, stop, edge) settles on a page.
+ */
+export interface PagedTarget {
+  readonly kind: 'paged';
+  holdStart(direction: 1 | -1): boolean;
+  holdMove(px: number): boolean;
+  holdEnd(): void;
+}
+
+export type ScrollTarget = ContinuousTarget | PagedTarget;
+
+/** Velocity the key-down ramp starts from: >= 1 px per frame at every refresh rate up to 240 Hz. */
+export const START_FLOOR_PX_S = 240;
+/**
+ * Distance a continuous press moves on the keydown itself, so the first frame painted after the
+ * key already shows motion (otherwise the first move waits for the next animation frame, which
+ * runs after that frame's other callbacks). The ramp continues from there.
+ */
+export const PRESS_LEAD_PX = 1;
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
 /** Frame-time integration; OS key repeat never contributes distance. */
@@ -29,14 +48,16 @@ export class SmoothScroller {
   private velocity = 0;
   private travelled = 0;
   private initialVelocity = 0;
-  private glide: ScrollAnimation;
+  /** Timestamp of the last frame the held motion ran in (a repeat in the same frame is no new frame). */
+  private lastFrame = -Infinity;
+  private glide: ScrollAnimation | null;
   constructor(
     private target: ScrollTarget,
     public settings: ScrollSettings = { ...defaults.scroll },
     private clock: FrameClock = browserClock,
     private reducedMotion = false,
   ) {
-    this.glide = new ScrollAnimation(target, clock);
+    this.glide = target.kind === 'continuous' ? new ScrollAnimation(target, clock) : null;
   }
   setReducedMotion(value: boolean) {
     this.reducedMotion = value;
@@ -52,11 +73,18 @@ export class SmoothScroller {
       previousVelocity * direction >= START_FLOOR_PX_S ? previousVelocity : direction * START_FLOOR_PX_S;
     this.direction = direction;
     this.started = this.last = this.clock.now();
+    this.lastFrame = -Infinity;
     this.travelled = 0;
-    this.target.holdStart?.(direction);
-    if (this.reducedMotion) {
-      this.target.scrollBy(direction * this.settings.tapLines * this.target.getLineHeight());
+    const target = this.target;
+    if (target.kind === 'paged') {
+      if (!target.holdStart(direction) || this.reducedMotion) return;
+    } else if (this.reducedMotion) {
+      target.scrollBy(direction * this.settings.tapLines * target.getLineHeight());
       return;
+    } else {
+      target.scrollBy(direction * PRESS_LEAD_PX);
+      this.travelled = PRESS_LEAD_PX;
+      if (this.atEdge(direction)) return this.stop();
     }
     this.frame = this.clock.request(this.tick);
   }
@@ -68,17 +96,13 @@ export class SmoothScroller {
     const velocity = this.heldVelocity(now);
     const pending = this.integrate(this.last, now);
     const travelled = this.travelled + Math.abs(pending);
-    const at = this.target.getScrollTop();
+    const target = this.target;
+    const at = target.kind === 'continuous' ? target.getScrollTop() : 0;
     this.stop();
-    if (this.reducedMotion) return;
-    // Page-turning targets own the whole press (holdStart turned the page, holdEnd settled it): a
-    // release glide would deliver scrollBy after holdEnd and turn a second page.
-    if (this.target.holdStart) return;
+    // A page target settled in stop() (holdEnd): it has no release glide.
+    if (this.reducedMotion || target.kind === 'paged' || !this.glide) return;
     if (now - this.started < 120) {
-      const remaining = Math.max(
-        0,
-        this.settings.tapLines * this.target.getLineHeight() - travelled,
-      );
+      const remaining = Math.max(0, this.settings.tapLines * target.getLineHeight() - travelled);
       // Deliver the pending held interval once, outside the release curve.
       this.glide.to(at + pending + direction * remaining, false, 200, velocity, pending);
       return;
@@ -95,10 +119,15 @@ export class SmoothScroller {
   stop() {
     this.clock.cancel(this.frame);
     this.frame = 0;
-    this.glide.stop();
-    if (this.direction !== 0) this.target.holdEnd?.();
+    this.glide?.stop();
+    if (this.direction !== 0 && this.target.kind === 'paged') this.target.holdEnd();
     this.direction = 0;
     this.velocity = 0;
+  }
+  private atEdge(direction: 1 | -1): boolean {
+    const t = this.target as ContinuousTarget;
+    const at = t.getScrollTop();
+    return direction < 0 ? at <= 0 : at >= t.getMaxScroll();
   }
   private heldVelocity(time: number) {
     const elapsed = Math.max(0, time - this.started);
@@ -126,13 +155,24 @@ export class SmoothScroller {
     return delta;
   }
   private tick = (time: number) => {
-    const delta = this.integrate(this.last, time);
-    this.velocity = this.heldVelocity(time);
-    this.last = time;
+    const target = this.target;
+    // One clock (G-PM4): a frame stamped before the key press (its frame began before the event
+    // was handled) adds no time and never moves `last` backwards; it still shows a step.
+    const now = Math.max(time, this.last);
+    const integrated = this.integrate(this.last, now);
+    const step = target.kind === 'continuous' && time > this.lastFrame ? minStep(target) : 0;
+    this.lastFrame = time;
+    const delta = Math.abs(integrated) < step ? this.direction * step : integrated;
+    this.velocity = this.heldVelocity(now);
+    this.last = now;
     this.travelled += Math.abs(delta);
-    this.target.scrollBy(delta);
-    const at = this.target.getScrollTop();
-    if ((delta < 0 && at <= 0) || (delta > 0 && at >= this.target.getMaxScroll())) this.stop();
-    else this.frame = this.clock.request(this.tick);
+    let moving: boolean;
+    if (target.kind === 'paged') moving = target.holdMove(delta);
+    else {
+      target.scrollBy(delta);
+      moving = delta === 0 || !this.atEdge(delta > 0 ? 1 : -1);
+    }
+    if (moving) this.frame = this.clock.request(this.tick);
+    else this.stop();
   };
 }

@@ -15,8 +15,6 @@ interface Props {
   timeLeftBook?: string | null;
   /** ST-05: preformatted, e.g. "820 chars/min". */
   speedLabel?: string | null;
-  /** Transient status, e.g. a layout fallback notice. */
-  notice?: ReactNode;
 }
 
 /** Reader footer content (PRD 6.7): "Chapter · 31.4%" left, time left right. Caption 12 px. */
@@ -27,7 +25,6 @@ export function ReaderFooter({
   timeLeftChapter,
   timeLeftBook,
   speedLabel,
-  notice,
 }: Props) {
   return (
     <>
@@ -45,11 +42,6 @@ export function ReaderFooter({
           <span className={styles.progress}>{formatProgress(progress)}</span>
         ) : null}
       </span>
-      {notice ? (
-        <span className={styles.notice} role="status">
-          {notice}
-        </span>
-      ) : null}
       <span className={styles.timeLeft} data-slot="time-left">
         {timeLeft}
         {[timeLeftChapter, timeLeftBook, speedLabel].filter(Boolean).join(' · ')}

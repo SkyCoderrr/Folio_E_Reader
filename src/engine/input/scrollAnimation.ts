@@ -9,10 +9,22 @@ export const browserClock: FrameClock = {
   cancel: (id) => cancelAnimationFrame(id),
 };
 
+/**
+ * The smallest step a running motion shows per frame (G-PM4): one device pixel. A frame whose share
+ * of the motion is smaller (the start of a curve whose first frame was stamped before the input,
+ * the slow end of an ease-out, a slow held key) moves one device pixel instead, never past the
+ * motion's end, so a motion never shows frames standing still between its first and last move.
+ */
+export function minStep(target: Pick<PositionTarget, 'getPixelSize'>): number {
+  return target.getPixelSize();
+}
+
 export interface PositionTarget {
   scrollBy(px: number): void;
   getScrollTop(): number;
   getMaxScroll(): number;
+  /** One device pixel in CSS px (1 / devicePixelRatio): the smallest step the view can show. */
+  getPixelSize(): number;
 }
 
 /** Finite ease-out trajectory. Deliver differences, so layout anchoring is never undone. */
@@ -23,6 +35,8 @@ export class ScrollAnimation {
   private delivered = 0;
   private tangent = 0;
   private duration = 200;
+  /** Timestamp of the last frame this trajectory ran in (a repeat in the same frame is no new frame). */
+  private lastFrame = -Infinity;
 
   constructor(
     private target: PositionTarget,
@@ -79,7 +93,21 @@ export class ScrollAnimation {
         ? 3 * this.distance
         : Math.sign(this.distance) * Math.max(0, (speed * duration) / 1000);
     this.started = this.clock.now();
+    this.lastFrame = -Infinity;
     this.frame = this.clock.request(this.tick);
+  }
+
+  /**
+   * Deliver the start of a fresh trajectory now (on the input event) instead of at the next
+   * animation frame: one pixel, only when the curve covers at least that in its first millisecond,
+   * so the lead never runs ahead of the position the next frame computes.
+   */
+  lead(): void {
+    if (!this.frame || this.delivered !== 0) return;
+    const step = Math.sign(this.distance);
+    if (Math.abs(this.positionAt(1 / this.duration)) < 1) return;
+    this.delivered = step;
+    this.target.scrollBy(step);
   }
 
   stop(): void {
@@ -88,20 +116,32 @@ export class ScrollAnimation {
     this.distance = this.delivered = 0;
   }
 
+  /** Distance along the curve at normalised time t (velocity (1-t)^2 * (a + b*t)). */
+  private positionAt(t: number): number {
+    const a = this.tangent;
+    const b = 12 * this.distance - 4 * a;
+    return a * (t - t * t + t ** 3 / 3) + b * ((t * t) / 2 - (2 * t ** 3) / 3 + t ** 4 / 4);
+  }
+
   private tick = (time: number): void => {
     const elapsed = time - this.started;
     const t = elapsed >= this.duration - 1e-7 ? 1 : Math.max(0, elapsed / this.duration);
-    const a = this.tangent;
-    const b = 12 * this.distance - 4 * a;
+    // At least one device pixel per new frame, never past the end (G-PM4).
+    const step = time > this.lastFrame ? minStep(this.target) : 0;
+    this.lastFrame = time;
+    const dir = Math.sign(this.distance);
+    const curve = t === 1 ? this.distance : this.positionAt(t);
     const position =
-      t === 1
-        ? this.distance
-        : a * (t - t * t + t ** 3 / 3) + b * ((t * t) / 2 - (2 * t ** 3) / 3 + t ** 4 / 4);
+      dir * Math.min(Math.abs(this.distance), Math.max(dir * curve, dir * this.delivered + step));
     const delta = position - this.delivered;
     this.delivered = position;
     this.target.scrollBy(delta);
     const at = this.target.getScrollTop();
-    if (t === 1 || (delta < 0 && at <= 0) || (delta > 0 && at >= this.target.getMaxScroll())) {
+    if (
+      position === this.distance ||
+      (delta < 0 && at <= 0) ||
+      (delta > 0 && at >= this.target.getMaxScroll())
+    ) {
       this.stop();
       this.onDone?.();
     } else {

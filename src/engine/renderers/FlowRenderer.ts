@@ -13,6 +13,8 @@ import { ScrollPosition } from './flow/scrollPosition';
 import { forwardCtrlWheel, forwardKey } from './flow/eventForward';
 import {
   captureAnchor,
+  END_TOLERANCE_PX,
+  isBookEnd,
   hrefPlacement,
   locatorAttempts,
   locatorOf,
@@ -85,6 +87,8 @@ export class FlowRenderer implements Renderer {
   #lastSize = { w: 0, h: 0 };
   #ro: ResizeObserver | null = null;
   #sizes: number[] = [];
+  /** Continuous target: scrolled by pixels (input/smoothScroller.ts). */
+  readonly kind = 'continuous' as const;
 
   constructor(options: FlowRendererOptions = {}) {
     this.#opts = {
@@ -160,7 +164,7 @@ export class FlowRenderer implements Renderer {
     );
   }
   isAtEnd(): boolean {
-    return this.getScrollTop() >= this.getMaxScroll();
+    return this.getScrollTop() >= this.getMaxScroll() - END_TOLERANCE_PX;
   }
 
   getLocator(): Locator {
@@ -176,7 +180,7 @@ export class FlowRenderer implements Renderer {
         snippet: '',
       };
     }
-    return locatorOf(slots, captureAnchor(slots, style), this.#sizes, this.#opts.locatorBridge);
+    return locatorOf(slots, captureAnchor(slots, style), this.#sizes, this.#opts.locatorBridge, this.isAtEnd());
   }
 
   /** Immediate scroll; sub-pixel remainders are accumulated so slow auto-scroll still moves. */
@@ -191,11 +195,14 @@ export class FlowRenderer implements Renderer {
     const sc = this.#slots?.scroller;
     if (!sc || !this.#style) return;
     this.#nav++;
-    const base = this.#motion.active ? this.#motion.destination : sc.scrollTop;
+    const fromRest = !this.#motion.active;
+    const base = fromRest ? sc.scrollTop : this.#motion.destination;
     this.#motion.to(
       base + dir * pageStep(sc.clientHeight, this.#style.lineHeightPx, this.#opts.pageOverlapLines),
       this.#reducedMotion(),
     );
+    // Start moving on the key press itself, so the first painted frame already shows motion.
+    if (fromRest) this.#motion.lead();
   }
 
   cancelScrollAnimation = (): void => {
@@ -277,6 +284,9 @@ export class FlowRenderer implements Renderer {
     return this.#slots?.scroller.clientHeight ?? 0;
   }
   /** Current line height in px (tap scroll = scroll.tapLines × this). */
+  getPixelSize(): number {
+    return 1 / (window.devicePixelRatio || 1);
+  }
   getLineHeight(): number {
     return this.#style?.lineHeightPx ?? 0;
   }
@@ -299,10 +309,16 @@ export class FlowRenderer implements Renderer {
     this.#opts.pageOverlapLines = Math.max(0, Math.floor(n));
   }
   /** Home/End: current section; Ctrl+Home/End: first/last (KB-04). */
-  async goToSectionEdge(index: number, edge: 'start' | 'end'): Promise<void> {
+  goToSectionEdge(index: number, edge: 'start' | 'end'): Promise<void> {
+    return this.#goToEdge(index, edge, 'goto');
+  }
+  async #goToEdge(index: number, edge: 'start' | 'end', reason: RelocateReason): Promise<void> {
     const n = this.sectionCount;
     if (n === 0) return;
     const i = clamp(Math.floor(index), 0, n - 1);
+    // The first section's start is the top of the book and the last section's end is its bottom
+    // (the track's trailing padding included), so Ctrl+End really is the end of the book (N1).
+    const bookEnd = edge === 'end' && i === n - 1;
     const slots = this.#slots;
     if (slots?.frameAt(i)) {
       const top = slots.layout.contentTop(i);
@@ -311,7 +327,9 @@ export class FlowRenderer implements Renderer {
           ? i === 0
             ? 0
             : top
-          : top + slots.layout.contentHeight(i) - slots.scroller.clientHeight,
+          : bookEnd
+            ? this.getMaxScroll()
+            : top + slots.layout.contentHeight(i) - slots.scroller.clientHeight,
         0,
         this.getMaxScroll(),
       );
@@ -323,12 +341,13 @@ export class FlowRenderer implements Renderer {
     }
     await this.#navigate(i, (f, top) => {
       if (edge === 'start') return { y: i === 0 ? 0 : top, range: null };
+      if (bookEnd) return { y: this.getMaxScroll(), range: null };
       const slots = this.#slots!;
       return {
         y: top + slots.layout.contentHeight(f.index) - slots.scroller.clientHeight,
         range: null,
       };
-    });
+    }, reason);
   }
   /** Dev perf overlay and spike measurements (ADR-001). */
   debugStats(): { mounted: number[]; pxPerUnit: number; anchoring: AnchorStats } | null {
@@ -408,14 +427,20 @@ export class FlowRenderer implements Renderer {
     const style = this.#style;
     if (!slots || !style) return;
     const a = anchor ?? captureAnchor(slots, style);
-    const locator = locatorOf(slots, a, this.#sizes, this.#opts.locatorBridge);
-    const key = `${locator.sectionIndex}:${locator.charOffset}:${a.range ? 1 : 0}`;
+    const locator = locatorOf(slots, a, this.#sizes, this.#opts.locatorBridge, this.isAtEnd());
+    // The end of the book is a position of its own (N1): reaching it changes the progress to 1
+    // even when the first character on screen stays the same.
+    const key = `${locator.sectionIndex}:${locator.charOffset}:${a.range ? 1 : 0}:${locator.progress === 1}`;
     if (reason === 'scroll' && key === this.#lastKey) return;
     this.#lastKey = key;
     this.#emit('relocate', { locator, reason });
   }
 
   async #goToLocator(loc: Locator, reason: RelocateReason): Promise<boolean> {
+    if (isBookEnd(loc) && this.sectionCount > 0) {
+      await this.#goToEdge(this.sectionCount - 1, 'end', reason);
+      return true;
+    }
     for (const attempt of locatorAttempts(loc, this.#sizes, this.#opts.locatorBridge)) {
       const a = attempt();
       if (!a || !(a[0] >= 0 && a[0] < this.sectionCount)) continue;

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:e-reader:contract:settings.schema.json:0.8.0",
+  "$id": "urn:e-reader:contract:settings.schema.json:0.9.0",
   "title": "E_Reader Settings v1 (effective object)",
-  "description": "Contract v0.8.0. Validates the COMPLETE effective settings object returned by settings_get and accepted by settings_set. settings.json on disk may omit keys and may contain unknown keys (see settings.md). Defaults are those of contract/settings.defaults.json; ReadingStyle defaults are the builtin.dark preset. x-* keywords are annotations (x-scope: P = preset field, G = global; x-step: UI slider step; x-unit; x-managed: only changeable through the named command).",
+  "description": "Contract v0.9.0. Validates the COMPLETE effective settings object returned by settings_get and accepted by settings_set. settings.json on disk may omit keys and may contain unknown keys (see settings.md). Defaults are those of contract/settings.defaults.json; ReadingStyle defaults are the builtin.dark preset. x-* keywords are annotations (x-scope: P = preset field, G = global; x-step: UI slider step; x-unit; x-managed: only changeable through the named command).",
   "type": "object",
   "additionalProperties": false,
   "required": [

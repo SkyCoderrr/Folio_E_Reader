@@ -1,4 +1,4 @@
-﻿// Scroll smoothness measurement (release build, isolated .test-profile/demo).
+// Scroll smoothness measurement (release build, isolated .test-profile/demo).
 // Records the reader scroll container's scrollTop on every animation frame while
 // (a) Down arrow is held with OS-like key repeat (500 ms delay, then every 33 ms) for 2 s,
 // (b) Down arrow is tapped once, (c) Page Down is pressed once.
@@ -12,11 +12,11 @@ const ev = (type, key, code, vk, extra = {}) => send('Input.dispatchKeyEvent', {
 const startRec = `(() => {
   const els = [...document.querySelectorAll('*')].filter(e => { const s = getComputedStyle(e); return /(auto|scroll)/.test(s.overflowY) && e.scrollHeight > e.clientHeight + 50; });
   const el = els.sort((a,b) => b.clientHeight - a.clientHeight)[0];
-  const gen = (window.__gen = (window.__gen || 0) + 1); window.__rec = { t: [], y: [], el };
+  const gen = (window.__gen = (window.__gen || 0) + 1); window.__rec = { t: [], y: [], el, key: null }; addEventListener('keydown', (e) => { if (window.__gen === gen && window.__rec.key === null) window.__rec.key = e.timeStamp; }, { capture: true });
   
   const f = (ts) => { window.__rec.t.push(ts); window.__rec.y.push(el.scrollTop); if (window.__gen === gen) requestAnimationFrame(f); };
   requestAnimationFrame(f); return !!el; })()`;
-const stopRec = `(() => { window.__gen++; return { t: window.__rec.t, y: window.__rec.y }; })()`;
+const stopRec = `(() => { window.__gen++; return { t: window.__rec.t, y: window.__rec.y, key: window.__rec.key }; })()`;
 function analyse(name, r) {
   const d = []; for (let i = 1; i < r.y.length; i++) d.push(+(r.y[i] - r.y[i - 1]).toFixed(3));
   const dt = []; for (let i = 1; i < r.t.length; i++) dt.push(+(r.t[i] - r.t[i - 1]).toFixed(2));
@@ -31,8 +31,11 @@ function analyse(name, r) {
   const mm = mid.reduce((a, b) => a + b, 0) / (mid.length || 1);
   const sd = Math.sqrt(mid.reduce((a, b) => a + (b - mm) ** 2, 0) / (mid.length || 1));
   const maxJump = Math.max(0, ...window_.map(Math.abs));
+  // first-move latency: animation frames from the keydown event to the first frame whose scrollTop changed
+  const k = r.key == null ? -1 : r.t.findIndex((t) => t >= r.key); const firstMoveFrames = k < 0 || !moving.length ? null : first + 1 - k + 1;
+  const firstMoveMs = k < 0 || !moving.length ? null : +(r.t[first + 1] - r.key).toFixed(1);
   const meanDt = dt.reduce((a, b) => a + b, 0) / (dt.length || 1);
-  const s = { name, frames: d.length, frameMs: +meanDt.toFixed(2), motionFrames: window_.length, zeroDeltaFramesDuringMotion: zeroInside, maxDeltaPx: maxJump, meanNonZeroDeltaPx: +mean.toFixed(2), steadyMeanPx: +mm.toFixed(2), steadyStdDevPx: +sd.toFixed(2), steadyCV: +(sd / (Math.abs(mm) || 1)).toFixed(3), totalPx: +(r.y.at(-1) - r.y[0]).toFixed(1), deltas: window_ };
+  const s = { name, firstMoveFrames, firstMoveMs, frames: d.length, frameMs: +meanDt.toFixed(2), motionFrames: window_.length, zeroDeltaFramesDuringMotion: zeroInside, maxDeltaPx: maxJump, meanNonZeroDeltaPx: +mean.toFixed(2), steadyMeanPx: +mm.toFixed(2), steadyStdDevPx: +sd.toFixed(2), steadyCV: +(sd / (Math.abs(mm) || 1)).toFixed(3), totalPx: +(r.y.at(-1) - r.y[0]).toFixed(1), deltas: window_ };
   console.log(name, JSON.stringify({ ...s, deltas: window_.slice(0, 40) }));
   return s;
 }

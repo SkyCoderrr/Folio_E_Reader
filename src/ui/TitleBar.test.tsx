@@ -34,3 +34,28 @@ it('t41u: a press inside a portalled menu does not start a window drag; the bar 
   expect(ipc.invoke).toHaveBeenCalledWith('window_start_drag', {});
   await act(async () => root.unmount());
 });
+
+it('#1: caption buttons observe resizes once, not on every render (Rust still gets every re-report)', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  let observers = 0;
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor() {
+        observers++;
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  for (const title of ['A', 'B', 'C', 'D']) await act(async () => root.render(<TitleBar title={title} />));
+  expect(observers).toBe(1);
+  ipc.invoke.mockClear();
+  await act(async () => void window.dispatchEvent(new Event('resize')));
+  expect((ipc.invoke.mock.calls as unknown[][]).some(([command]) => command === 'window_set_caption_rects')).toBe(true);
+  await act(async () => root.unmount());
+  vi.unstubAllGlobals();
+});

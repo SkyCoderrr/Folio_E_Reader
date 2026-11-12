@@ -16,6 +16,8 @@ import { createRenderer } from '../../engine/renderers/createRenderer';
 import MainApp from '../../app/MainApp';
 import { useLibrary } from '../../state/libraryStore';
 import { epubSource } from '../../engine/book/epubSource';
+import * as epubMeasurements from '../../engine/book/epubMeasurements';
+import { overlays } from '../../state/overlayStore';
 
 const mocks = vi.hoisted(() => ({
   mount: vi.fn<(...args: unknown[]) => Promise<void>>(async () => undefined),
@@ -28,7 +30,6 @@ const mocks = vi.hoisted(() => ({
   listeners: new Map<string, () => void>(),
   saved: null as Locator | null,
   pages: null as unknown,
-  fallback: false,
   stop: vi.fn(),
   unsubscribe: vi.fn(),
   getLocator: vi.fn(),
@@ -37,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   rect: vi.fn(),
   scrollBy: vi.fn(),
   atEnd: false,
+  window: null as { fullscreen: boolean } | null,
   events: new Map<string, (event: never) => void>(),
   toast: Object.assign(vi.fn(), { error: vi.fn() }),
   overlap: vi.fn(),
@@ -58,8 +60,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../engine/book/epubSource', () => ({
   epubSource: vi.fn(async () => ({
     sections: [
-      { id: 'one', createDocument: () => new Promise<Document>(() => {}) },
-      { id: 'two', createDocument: () => new Promise<Document>(() => {}) },
+      { id: 'one', size: 1000, createDocument: () => new Promise<Document>(() => {}) },
+      { id: 'two', size: 3000, createDocument: () => new Promise<Document>(() => {}) },
     ],
     toc: [
       { label: 'First chapter', href: 'one' },
@@ -71,9 +73,12 @@ vi.mock('../../engine/book/epubSource', () => ({
   })),
 }));
 vi.mock('../../engine/renderers/createRenderer', () => ({
-  createRenderer: vi.fn(() => ({
-    fallback: mocks.fallback ? 'grid-unsupported' : null,
+  createRenderer: vi.fn((layout: { flow?: string; pagesPerView?: number }) => ({
     renderer: new (class {
+      kind = layout.flow === 'paged' || layout.pagesPerView === 2 ? 'paged' : 'continuous';
+      holdStart = () => false;
+      holdMove = () => false;
+      holdEnd = vi.fn();
       sectionCount = 2;
       mount = mocks.mount;
       destroy = mocks.destroy;
@@ -118,14 +123,20 @@ vi.mock('../../engine/locator', async (original) => ({
   positionKey: async () => 'pos:fixture',
 }));
 vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: (path: string) => `asset:${path}` }));
-vi.mock('../../ipc/commands', () => ({ invoke: mocks.invoke }));
+vi.mock('../../ipc/commands', async (original) => ({
+  ...(await original<typeof import('../../ipc/commands')>()),
+  invoke: mocks.invoke,
+}));
 vi.mock('../../ipc/events', () => ({
   listen: async (name: string, cb: () => void) => {
     mocks.listeners.set(name, cb);
     return () => mocks.listeners.delete(name);
   },
 }));
-vi.mock('../../ui/useWindowState', () => ({ useWindowState: () => null }));
+vi.mock('../../ui/useWindowState', () => ({
+  useWindowState: () => mocks.window,
+  windowState: { get: () => mocks.window, subscribe: () => () => undefined },
+}));
 vi.mock('../../ui/TitleBar', () => ({ TitleBar: () => null }));
 vi.mock('../../ui/Toaster', () => ({ Toaster: () => null }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
@@ -138,7 +149,7 @@ vi.mock('@tauri-apps/api/webview', () => ({
   }),
 }));
 vi.mock('./ReaderChrome', () => ({
-  ReaderChrome: ({
+  ReaderChrome: vi.fn(({
     children,
     footer,
     leading,
@@ -159,16 +170,16 @@ vi.mock('./ReaderChrome', () => ({
       leading,
       children,
       footer,
-      createElement('button', { onClick: sidebar.onToggle }, 'Sidebar toggle'),
+      createElement('button', { onClick: sidebar?.onToggle }, 'Sidebar toggle'),
       createElement(
         'output',
         { 'data-layout': true },
-        `${layout.flow}:${layout.effectivePagesPerView}`,
+        `${layout?.flow}:${layout?.effectivePagesPerView}`,
       ),
       commands
         .filter((c) => c.label)
         .map((c) => createElement('button', { key: c.label, onClick: c.onSelect }, c.label)),
-    ),
+    )),
 }));
 vi.mock('../txt/TxtSettingsDialogs', async (original) => ({
   ...(await original<typeof import('../txt/TxtSettingsDialogs')>()),
@@ -192,13 +203,13 @@ let disk: Settings;
 beforeEach(() => {
   disk = structuredClone(defaults) as Settings;
   useSettings.setState({ loaded: false });
-  useLibrary.setState({ opened: null, books: [], selection: [], query: '', formatFilter: 'all' });
+  useLibrary.setState({ opened: null, openedData: null, books: [], selection: [], query: '', formatFilter: 'all' });
   vi.clearAllMocks();
   mocks.saved = null;
   mocks.atEnd = false;
+  mocks.window = null;
   mocks.rect.mockReturnValue(null);
   mocks.pages = null;
-  mocks.fallback = false;
   mocks.getLocator.mockImplementation(() => mocks.current);
   mocks.listeners.clear();
   mocks.events.clear();
@@ -214,6 +225,7 @@ beforeEach(() => {
       args: { key?: string; value?: unknown; locator?: Locator; patch?: SettingsPatch },
     ) => {
       if (command === 'settings_get') return structuredClone(disk);
+      if (command === 'book_open') return openExample.result;
       if (command === 'library_list') return [openExample.result.book];
       if (command === 'book_open') return openExample.result;
       if (command === 'settings_patch') {
@@ -223,6 +235,10 @@ beforeEach(() => {
       }
       if (command === 'position_get') return mocks.saved;
       if (command === 'bookmarks_list') return [];
+      if (command === 'window_set_fullscreen') {
+        mocks.window = { fullscreen: (args as { fullscreen: boolean }).fullscreen };
+        return null;
+      }
       if (command === 'position_save') {
         mocks.saved = args.locator!;
         return null;
@@ -243,6 +259,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await act(async () => root.unmount());
+  overlays.reset();
   container.remove();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -327,6 +344,7 @@ it('opens TXT through txt_prepare and keeps the global offset when encoding chan
   const at = { ...mocks.current, globalCharOffset: 73 };
   mocks.invoke.mockImplementation(async (command: string) => {
     if (command === 'settings_get') return structuredClone(disk);
+      if (command === 'book_open') return openExample.result;
     if (command === 'position_get') return at;
     if (command === 'txt_prepare')
       return prepared++ === 0
@@ -358,8 +376,8 @@ it('opens TXT through txt_prepare and keeps the global offset when encoding chan
   expect(mocks.mount.mock.calls[0]?.[1]).toMatchObject({ format: 'txt' });
   expect(mocks.mount.mock.calls[0]?.[3]).toEqual(at);
   await key('KeyT');
-  await act(async () => emit('section', { index: 0 }));
-  expect(container.querySelector('[aria-current="true"]')?.textContent).toBe('Chapter');
+  await act(async () => emit('relocate', { locator: at, reason: 'mount' }));
+  expect(container.querySelector('[aria-current="true"]')?.textContent).toMatch(/^Chapter/);
   await act(async () => (container.querySelector('[role="treeitem"]') as HTMLElement).click());
   expect(mocks.goTo).toHaveBeenCalledWith({ href: 's0.html' });
   expect(mocks.mount.mock.calls[0]?.[2]).toMatchObject({
@@ -412,7 +430,7 @@ it('defaults to one page and toggles twice with the locator and source preserved
   await open();
   expect(createRenderer).toHaveBeenCalledWith(
     { flow: 'scroll', pagesPerView: 1 },
-    expect.objectContaining({ pageGapPx: 48, pageOverlapLines: defaults.scroll.pageOverlapLines }),
+    expect.objectContaining({ pageOverlapLines: defaults.scroll.pageOverlapLines }),
   );
   await key('Equal', { ctrlKey: true });
   for (const pagesPerView of [2, 1]) {
@@ -428,7 +446,7 @@ it('defaults to one page and toggles twice with the locator and source preserved
   }
   expect(mocks.sourceDestroy).not.toHaveBeenCalled();
   expect(mocks.destroy).toHaveBeenCalledTimes(2);
-  expect(mocks.unsubscribe).toHaveBeenCalledTimes(8);
+  expect(mocks.unsubscribe).toHaveBeenCalledTimes(6); // relocate, load, spread per replaced renderer
   expect(mocks.scroller).toHaveBeenCalledTimes(3);
   const created = vi.mocked(createRenderer).mock.results;
   expect(mocks.scroller.mock.calls[1]?.[0]).toBe(created[1]?.value.renderer);
@@ -456,18 +474,6 @@ it('restores only a valid saved page preference across reader openings', async (
     { flow: 'scroll', pagesPerView: 2 },
     expect.any(Object),
   );
-});
-it('shows a non-blocking fallback notice, keeps the preference, and clears it on toggle back', async () => {
-  await open();
-  mocks.fallback = true;
-  await key('KeyD');
-  expect(container.querySelector('[role="status"]')?.textContent).toContain('Showing one page.');
-  expect(container.querySelector('[role="alert"]')).toBeNull();
-  expect(useSettings.getState().settings.reader.pagesPerView).toBe(2);
-  mocks.fallback = false;
-  await key('KeyD');
-  expect(container.querySelector('[role="status"]')).toBeNull();
-  expect(useSettings.getState().settings.reader.pagesPerView).toBe(1);
 });
 it('ignores a second toggle while the replacement renderer is mounting', async () => {
   await open();
@@ -616,25 +622,19 @@ it('routes T / Ctrl+B / Esc and mouse toggle with the requested tab and motion',
   await key('KeyT');
   const appearance = container.querySelector('aside[aria-label="Appearance"]')!;
   await act(async () =>
-    appearance.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key: 'Escape',
-        code: 'Escape',
-        bubbles: true,
-        cancelable: true,
-      }),
+    ['keydown', 'keyup'].forEach((type) =>
+      appearance.dispatchEvent(
+        new KeyboardEvent(type, { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }),
+      ),
     ),
   );
   expect(sidebar().getAttribute('data-open')).toBe('false');
   expect(appearance.getAttribute('data-open')).toBe('true');
   await act(async () =>
-    appearance.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key: 'Escape',
-        code: 'Escape',
-        bubbles: true,
-        cancelable: true,
-      }),
+    ['keydown', 'keyup'].forEach((type) =>
+      appearance.dispatchEvent(
+        new KeyboardEvent(type, { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }),
+      ),
     ),
   );
   expect(appearance.getAttribute('data-open')).toBe('false');
@@ -647,11 +647,11 @@ it('routes T / Ctrl+B / Esc and mouse toggle with the requested tab and motion',
   expect(sidebar().getAttribute('data-open')).toBe('false');
   expect(back).not.toHaveBeenCalled();
 });
-it('tracks renderer section/relocate events and navigates TOC hrefs through goTo', async () => {
+it('follows relocate events (the one current chapter) and navigates TOC hrefs through goTo', async () => {
   await open();
   await key('KeyT');
-  await act(async () => emit('section', { index: 1 }));
-  expect(container.querySelector('[aria-current="true"]')?.textContent).toBe('Second chapter');
+  await act(async () => emit('relocate', { locator: mocks.current, reason: 'mount' }));
+  expect(container.querySelector('[aria-current="true"]')?.textContent).toMatch(/^Second chapter/);
   await act(async () =>
     emit('relocate', { locator: { ...mocks.current, sectionIndex: 0 }, reason: 'scroll' }),
   );
@@ -850,9 +850,10 @@ it('queries startup boss failures after listeners and shows a toast and Settings
     return original(command, args);
   });
   await act(async () => root.render(createElement(MainApp)));
-  expect(mocks.toast.error).toHaveBeenCalledWith(expect.stringContaining('Already occupied'));
+  expect(mocks.toast.error).toHaveBeenCalledWith('Boss key Ctrl+Alt+B is in use by another app. Choose another in Settings › Keyboard.', { id: 'boss-key-registration' });
   await act(async () => mocks.listeners.get('tray://open-settings')?.());
-  expect(container.textContent).toContain('Boss key unavailable');
+  expect(container.textContent).toContain('Boss key Ctrl+Alt+B is in use by another app');
+  expect(container.textContent).not.toContain('Already occupied');
 });
 
 it('tray Library saves the current locator before closing the book', async () => {
@@ -937,7 +938,8 @@ it('shows managed folder failures inline and leaves the confirmation available t
       ) as HTMLElement
     ).click(),
   );
-  expect(container.textContent).toContain('Access denied');
+  expect(container.textContent).toContain('A file could not be read or written.'); // IO_ERROR copy
+  expect(container.textContent).not.toContain('Access denied');
   expect(document.querySelector('[role="dialog"]')).not.toBeNull();
 });
 
@@ -985,7 +987,7 @@ it('records a boss chord through managed IPC and shows switch failures inline', 
   expect(mocks.invoke).toHaveBeenCalledWith('boss_set_shortcut', { shortcut: 'Ctrl+Alt+J' });
   await act(async () => (container.querySelector('[role="switch"]') as HTMLElement).click());
   expect(mocks.invoke).toHaveBeenCalledWith('boss_set_enabled', { enabled: true });
-  expect(container.textContent).toContain('Another app owns this chord');
+  expect(container.textContent).toContain('That shortcut is used by another app.'); // SHORTCUT_IN_USE copy
 });
 
 it('reprepares an open TXT after global TXT settings persist, preserving its locator', async () => {
@@ -1096,11 +1098,8 @@ it.each([
       vi.spyOn(document, 'hasFocus').mockReturnValue(false);
       window.dispatchEvent(new Event('blur'));
     }
-    if (reason === 'dialog' || reason === 'menu') {
-      const element = document.createElement('div');
-      element.setAttribute('role', reason);
-      container.append(element);
-    }
+    // A Base UI menu / dialog registers itself in the overlay store while open.
+    if (reason === 'dialog' || reason === 'menu') overlays.open({ id: reason, kind: 'modal' });
   });
   if (reason === 'panel') await key('KeyT');
   if (reason === 'navigation') await key('PageDown');
@@ -1109,7 +1108,8 @@ it.each([
   expect(mocks.scrollBy).not.toHaveBeenCalled();
   expect(container.textContent).toContain('Paused');
   await key('Space');
-  if (reason === 'panel' || reason === 'dialog' || reason === 'menu') {
+  // A menu/dialog owns the keyboard; a non-modal panel does not (G0: Space resumes there).
+  if (reason === 'dialog' || reason === 'menu') {
     await frame(1000);
     expect(mocks.scrollBy).not.toHaveBeenCalled();
   }
@@ -1277,7 +1277,8 @@ it('saves active auto-scroll on boss hide beyond the idle timeout and excludes h
   expect(saves()).toHaveLength(1);
 });
 
-it('persists measured EPUB character totals in the background', async () => {
+it('logs a failed background EPUB cache save without notifying or delaying the mounted reader', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
   const source = await epubSource('fixture');
   source.sections = [0, 1].map((i) => ({
     ...source.sections[i]!,
@@ -1285,14 +1286,77 @@ it('persists measured EPUB character totals in the background', async () => {
       new DOMParser().parseFromString(`<body>${'x'.repeat(1000)}</body>`, 'text/html'),
   }));
   vi.mocked(epubSource).mockResolvedValueOnce(source);
+  const original = mocks.invoke.getMockImplementation()!;
+  let rejectSave!: (error: unknown) => void;
+  mocks.invoke.mockImplementation(async (command: string, args: never) => {
+    if (command === 'book_open') return { ...openExample.result,
+      epubMetrics: { fileHash: 'a'.repeat(64), sectionChars: [], tocFragmentOffsets: {} } };
+    if (command === 'book_set_section_chars') return new Promise((_, reject) => { rejectSave = reject; });
+    return original(command, args);
+  });
   await open();
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 30));
-  });
-  expect(mocks.invoke).toHaveBeenCalledWith('book_set_total_chars', {
+  await act(async () => vi.waitFor(() => expect(rejectSave).toBeTypeOf('function')));
+  expect(mocks.invoke).toHaveBeenCalledWith('book_set_section_chars', {
     bookId: openExample.result.book.id,
-    totalChars: 2000,
+    metrics: { fileHash: 'a'.repeat(64), sectionChars: [1000, 1000], tocFragmentOffsets: {} },
   });
+  expect(mocks.mount).toHaveBeenCalledOnce();
+  // Opening has completed even though the optional cache write is still pending.
+  await key('PageDown');
+  expect(mocks.page).toHaveBeenCalledWith(1);
+  await act(async () => rejectSave('book_set_section_chars not allowed'));
+  expect(warn).toHaveBeenCalledWith('[reader] save EPUB measurements', 'book_set_section_chars not allowed');
+  expect(mocks.toast.error).not.toHaveBeenCalled();
+  expect(mocks.invoke.mock.calls.some(([name]) => name === 'stats_query')).toBe(false);
+});
+
+it('opens a warm EPUB without measuring or saving its cache', async () => {
+  const measure = vi.spyOn(epubMeasurements, 'measureEpubSections');
+  const source = await epubSource('fixture');
+  const read = vi.fn(async () => new DOMParser().parseFromString('<body>text</body>', 'text/html'));
+  source.sections = source.sections.map((section) => ({ ...section, createDocument: read }));
+  vi.mocked(epubSource).mockResolvedValueOnce(source);
+  await open();
+  expect(mocks.mount).toHaveBeenCalledOnce();
+  expect(read).not.toHaveBeenCalled();
+  expect(measure).not.toHaveBeenCalled();
+  expect(mocks.invoke.mock.calls.some(([name]) => name === 'book_set_section_chars')).toBe(false);
+  const { ReaderChrome } = await import('./ReaderChrome');
+  expect(vi.mocked(ReaderChrome).mock.calls.at(-1)![0].readout).not.toBe('Preparing chapters…');
+  expect(vi.mocked(createRenderer).mock.calls[0]![1]!.locatorBridge?.sectionChars?.()).toEqual([100, 200]);
+});
+
+it('discards background measurements after disposal without saving or publishing state', async () => {
+  const { ReaderSession } = await import('./session/ReaderSession');
+  const source = await epubSource('fixture');
+  let release!: (doc: Document) => void;
+  const read = vi.fn(() => new Promise<Document>((resolve) => { release = resolve; }));
+  const nextRead = vi.fn(async () => new DOMParser().parseFromString('<body>next</body>', 'text/html'));
+  source.sections = [
+    { ...source.sections[0]!, createDocument: read },
+    { ...source.sections[1]!, createDocument: nextRead },
+  ];
+  vi.mocked(epubSource).mockResolvedValueOnce(source);
+  const session = new ReaderSession(openExample.result.book as BookRecord, container, { onBack: back }, {
+    ...openExample.result, book: openExample.result.book as BookRecord,
+    epubMetrics: { fileHash: 'a'.repeat(64), sectionChars: [], tocFragmentOffsets: {} },
+  });
+  const changed = vi.fn();
+  session.subscribe(changed);
+  await act(async () => session.start());
+  await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+  expect(mocks.mount).toHaveBeenCalledOnce();
+  expect(session.getState().measuring).toBe(true);
+  session.dispose();
+  const before = session.getState();
+  changed.mockClear();
+  await act(async () => release(new DOMParser().parseFromString('<body>finished</body>', 'text/html')));
+  expect(session.getState()).toBe(before);
+  expect(changed).not.toHaveBeenCalled();
+  expect(nextRead).not.toHaveBeenCalled();
+  expect(mocks.invoke.mock.calls.some(([name]) => name === 'book_set_section_chars')).toBe(false);
+  expect(mocks.sourceDestroy).toHaveBeenCalledOnce();
+  expect(mocks.toast.error).not.toHaveBeenCalled();
 });
 
 it('flushes the session through the idle timer without counting the idle tail', async () => {
@@ -1308,4 +1372,371 @@ it('flushes the session through the idle timer without counting the idle tail', 
   } finally {
     vi.useRealTimers();
   }
+});
+
+// ── Batch 3 regressions ──
+it('Escape never leaves the book: panel first, then fullscreen, then nothing', async () => {
+  await open();
+  await key('Escape');
+  expect(back).not.toHaveBeenCalled();
+  await key('KeyT');
+  await key('F11');
+  await key('Escape'); // closes the Contents panel
+  expect(container.querySelector('aside[aria-label="Contents"]')?.getAttribute('data-open')).toBe('false');
+  expect(mocks.window).toEqual({ fullscreen: true });
+  await key('Escape'); // leaves fullscreen
+  expect(mocks.window).toEqual({ fullscreen: false });
+  await key('Escape'); // nothing left: stays in the book
+  await key('Escape');
+  expect(back).not.toHaveBeenCalled();
+  await key('KeyW', { ctrlKey: true }); // leaving the book is its own shortcut
+  expect(back).toHaveBeenCalledOnce();
+});
+// ── G0: the reading keys follow focus, not whether a panel is open ──
+const keyOn = (target: EventTarget, code: string) =>
+  act(async () => {
+    const down = new KeyboardEvent('keydown', { code, key: code === 'Space' ? ' ' : code, bubbles: true, cancelable: true });
+    target.dispatchEvent(down);
+    target.dispatchEvent(new KeyboardEvent('keyup', { code, bubbles: true }));
+    return down;
+  });
+const mouseClick = (el: Element, detail = 1) =>
+  act(async () => void el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail })));
+it('G0: with the Contents panel open (pinned) and focus not inside it, the reading keys work', async () => {
+  await open();
+  await key('KeyT');
+  expect(container.querySelector('aside[aria-label="Contents"]')?.getAttribute('data-open')).toBe('true');
+  await key('PageDown');
+  expect(mocks.page).toHaveBeenCalledWith(1);
+  await key('ArrowLeft'); // page.prev
+  expect(mocks.page).toHaveBeenLastCalledWith(-1);
+  await key('Escape'); // Escape still closes the panel first
+  expect(container.querySelector('aside[aria-label="Contents"]')?.getAttribute('data-open')).toBe('false');
+});
+it('G0: focus on a plain chrome button: Space/Enter go to the button, arrows and PgDn still read', async () => {
+  await open();
+  const toggle = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Sidebar toggle')!;
+  toggle.focus();
+  const space = await keyOn(toggle, 'Space');
+  expect(space.defaultPrevented).toBe(false); // the button activates
+  const enter = await keyOn(toggle, 'Enter');
+  expect(enter.defaultPrevented).toBe(false);
+  expect(mocks.page).not.toHaveBeenCalled();
+  await keyOn(toggle, 'PageDown');
+  expect(mocks.page).toHaveBeenCalledWith(1);
+  await keyOn(toggle, 'ArrowRight');
+  expect(mocks.page).toHaveBeenCalledTimes(2);
+});
+it.each([
+  ['the TOC tree', 'tree'],
+  ['a text field', 'input'],
+  ['a slider', 'slider'],
+  ['a listbox', 'listbox'],
+  ['a select', 'select'],
+])('G0: focus inside %s leaves the reading keys to that control', async (_name, kind) => {
+  await open();
+  await key('KeyT');
+  let el: HTMLElement;
+  if (kind === 'tree') el = container.querySelector('[role="treeitem"]')!;
+  else {
+    el = document.createElement(kind === 'input' || kind === 'select' ? kind : 'div');
+    if (kind === 'slider' || kind === 'listbox') el.setAttribute('role', kind);
+    el.tabIndex = 0;
+    container.append(el);
+  }
+  expect(el).toBeTruthy();
+  el.focus();
+  await keyOn(el, 'PageDown');
+  await keyOn(el, 'End');
+  await keyOn(el, 'Space');
+  expect(mocks.page).not.toHaveBeenCalled();
+  expect(mocks.edge).not.toHaveBeenCalled();
+});
+it('G0: an open menu, popover or dialog turns the reading keys off', async () => {
+  await open();
+  await act(async () => overlays.open({ id: 'menu', kind: 'modal' }));
+  await key('PageDown');
+  expect(mocks.page).not.toHaveBeenCalled();
+  await act(async () => overlays.close('menu'));
+  await key('PageDown');
+  expect(mocks.page).toHaveBeenCalledWith(1);
+});
+it('G0: a pointer click on a chrome button or a TOC entry gives the text the keyboard; keyboard activation keeps focus', async () => {
+  await open();
+  const mount = container.querySelector('.reader-mount') as HTMLElement;
+  const toggle = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Sidebar toggle')!;
+  toggle.focus();
+  await mouseClick(toggle, 0); // Enter/Space on the button: a click with detail 0
+  expect(document.activeElement).toBe(toggle);
+  expect(container.querySelector('aside[aria-label="Contents"]')?.getAttribute('data-open')).toBe('true');
+  const entry = [...container.querySelectorAll('[role="treeitem"]')].find((e) =>
+    e.textContent?.includes('Second chapter'),
+  ) as HTMLElement;
+  entry.focus();
+  await mouseClick(entry);
+  expect(mocks.goTo).toHaveBeenCalledWith({ href: 'two' });
+  expect(document.activeElement).toBe(mount);
+  await key('PageDown'); // no extra click needed
+  expect(mocks.page).toHaveBeenCalledWith(1);
+  toggle.focus();
+  await mouseClick(toggle);
+  expect(document.activeElement).toBe(mount);
+  const field = document.createElement('input');
+  container.append(field);
+  field.focus();
+  await mouseClick(field); // a value control keeps focus after a pointer press
+  expect(document.activeElement).toBe(field);
+});
+it('Space on a focused chrome button activates the button and does not turn a page', async () => {
+  await open();
+  const toggle = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Sidebar toggle')!;
+  toggle.focus();
+  await act(async () => {
+    const down = new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true, cancelable: true });
+    toggle.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(false);
+    toggle.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space', key: ' ', bubbles: true }));
+  });
+  expect(mocks.page).not.toHaveBeenCalled();
+  await key('Space'); // focus on the text again (window target): Space pages
+  expect(mocks.page).toHaveBeenCalledWith(1);
+});
+it('a bookmark stores the progress the footer shows (one locator, one progress)', async () => {
+  const original = mocks.invoke.getMockImplementation()!;
+  mocks.invoke.mockImplementation(async (command: string, args: Record<string, unknown>) =>
+    command === 'bookmark_add'
+      ? { ...args, id: 'b1', progress: (args.locator as Locator).progress, createdAt: 0 }
+      : original(command, args as never),
+  );
+  await open();
+  const here = { ...mocks.current, progress: 0.4567 };
+  mocks.getLocator.mockReturnValue(here);
+  await act(async () => emit('relocate', { locator: here, reason: 'scroll' }));
+  expect(container.textContent).toContain('45.7%');
+  await key('KeyD', { ctrlKey: true });
+  const add = mocks.invoke.mock.calls.find(([command]) => command === 'bookmark_add')!;
+  expect((add[1] as { locator: Locator }).locator.progress).toBe(0.4567);
+});
+it('one transition queue: a layout swap waits for a running TXT re-split, then remounts once', async () => {
+  const initial = txtExample.result;
+  let release!: () => void;
+  let prepared = 0;
+  mocks.invoke.mockImplementation(async (command: string) => {
+    if (command === 'settings_get') return structuredClone(disk);
+      if (command === 'book_open') return openExample.result;
+    if (command === 'position_get') return mocks.current;
+    if (command === 'txt_prepare') return initial;
+    if (command === 'txt_prefs_set') {
+      prepared++;
+      await new Promise<void>((resolve) => (release = resolve));
+      return { encoding: 'gb18030' };
+    }
+    return null;
+  });
+  await act(async () =>
+    root.render(
+      createElement(ReaderView, {
+        book: { ...openExample.result.book, format: 'txt' } as BookRecord,
+        onBack: back,
+        onQuit: quit,
+        saveRef,
+      }),
+    ),
+  );
+  const button = (label: string) => [...container.querySelectorAll('button')].find((b) => b.textContent === label)!;
+  await act(async () => button('Text Encoding…').click());
+  await act(async () => button('Pick test encoding').click());
+  expect(prepared).toBe(1);
+  await key('KeyD'); // layout swap while the re-split is preparing (the dialog is a test stub here)
+  await key('KeyD');
+  await key('KeyD');
+  expect(mocks.mount).toHaveBeenCalledTimes(1); // nothing remounted in between
+  await act(async () => release());
+  // The re-split's mount already reads the final layout (two pages); the queued swaps find
+  // nothing left to do: one remount in total, never two renderers at once.
+  expect(mocks.mount).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(createRenderer).mock.calls.map(([layout]) => layout.pagesPerView)).toEqual([1, 2]);
+  expect(mocks.destroy).toHaveBeenCalledTimes(1);
+});
+it('N9: global TXT setting edits made in Settings re-split once, when the reader resumes', async () => {
+  let prepares = 0;
+  mocks.invoke.mockImplementation(async (command: string, args: { patch?: SettingsPatch }) => {
+    if (command === 'settings_get') return structuredClone(disk);
+      if (command === 'book_open') return openExample.result;
+    if (command === 'settings_patch') {
+      disk = mergePatch(disk, args.patch);
+      return structuredClone(disk);
+    }
+    if (command === 'position_get') return mocks.current;
+    if (command === 'txt_prepare') {
+      prepares++;
+      return txtExample.result;
+    }
+    return null;
+  });
+  const book = { ...openExample.result.book, format: 'txt' } as BookRecord;
+  const render = (suspended: boolean) =>
+    act(async () =>
+      root.render(
+        createElement(ReaderView, {
+          book,
+          onBack: back,
+          onQuit: quit,
+          saveRef,
+          suspended,
+        }),
+      ),
+    );
+  await render(false);
+  expect(prepares).toBe(1);
+  await render(true);
+  for (const size of [5000, 6000, 7000])
+    await act(async () => useSettings.getState().patch({ txt: { fallbackChunkChars: size } }));
+  expect(prepares).toBe(1); // nothing while Settings is open
+  await render(false);
+  expect(prepares).toBe(2); // once, with the last value
+  expect(mocks.mount).toHaveBeenCalledTimes(2);
+});
+
+it('shows the fatal panel when a layout remount fails after teardown', async () => {
+  await open();
+  mocks.mount.mockRejectedValueOnce({ code: 'IO_ERROR', message: 'private mount detail' });
+  await key('KeyD');
+  expect(container.querySelector('.reader-error[role="alert"]')?.textContent).toContain('A file could not be read or written.');
+  expect(container.textContent).not.toContain('private mount detail');
+  expect(mocks.toast.error).not.toHaveBeenCalled();
+});
+
+it('exposes toolbar pinning and auto-scroll through More with live shortcuts', async () => {
+  const frame = controlledFrames();
+  await open();
+  const button = (label: string) => [...container.querySelectorAll('button')].find((b) => b.textContent === label)!;
+  await act(async () => button('Keep toolbar visible').click());
+  expect(button('Auto-hide toolbar')).toBeTruthy();
+  await act(async () => button('Start auto-scroll').click());
+  await frame(100);
+  expect(mocks.scrollBy).toHaveBeenCalled();
+  await act(async () => button('Stop auto-scroll').click());
+  expect(button('Start auto-scroll')).toBeTruthy();
+});
+it('limits the preset accent to the margin bookmark layer', async () => {
+  await open();
+  await act(async () => useSettings.getState().patchStyle({ colors: { accent: '#123456' } }));
+  const layer = container.querySelector<HTMLElement>('[data-bookmark-marks]')!;
+  expect(layer.style.getPropertyValue('--accent')).toBe('#123456');
+  expect(layer.parentElement?.style.getPropertyValue('--accent')).toBe('');
+  expect(container.querySelector<HTMLElement>('.reader-mount')?.style.getPropertyValue('--accent')).toBe('');
+});
+it('does not register the saved sidebar after disposal during settings load', async () => {
+  const { ReaderSession } = await import('./session/ReaderSession');
+  const original = mocks.invoke.getMockImplementation()!;
+  let release!: (settings: Settings) => void;
+  mocks.invoke.mockImplementation(async (command: string, args: never) => command === 'settings_get'
+    ? new Promise<Settings>((resolve) => { release = resolve; }) : original(command, args));
+  const session = new ReaderSession(openExample.result.book as BookRecord, container, { onBack: back });
+  await act(async () => session.start());
+  session.dispose();
+  disk.ui.tocOpen = true;
+  await act(async () => release(disk));
+  expect(overlays.snapshot()).toEqual([]);
+  expect(mocks.invoke.mock.calls.some(([name]) => name === 'book_open')).toBe(false);
+});
+it('keeps chrome callbacks, command entries and footer stable on unchanged reading data', async () => {
+  const { ReaderChrome } = await import('./ReaderChrome');
+  const chrome = vi.mocked(ReaderChrome);
+  await open();
+  await act(async () => emit('relocate', { locator: { ...mocks.current }, reason: 'scroll' }));
+  const before = chrome.mock.calls.at(-1)![0];
+  await act(async () => emit('relocate', { locator: { ...mocks.current }, reason: 'scroll' }));
+  const after = chrome.mock.calls.at(-1)![0];
+  for (const prop of ['focusHome', 'onSurfacePress', 'footer', 'commands'] as const)
+    expect(after[prop]).toBe(before[prop]);
+});
+it('retains a failed global TXT re-split for retry when Settings closes again', async () => {
+  const original = mocks.invoke.getMockImplementation()!;
+  let prepares = 0;
+  mocks.invoke.mockImplementation(async (command: string, args: never) => {
+    if (command === 'txt_prepare') {
+      if (++prepares === 2) throw { code: 'IO_ERROR', message: 'read failed' };
+      return txtExample.result;
+    }
+    return original(command, args);
+  });
+  const book = { ...openExample.result.book, format: 'txt' } as BookRecord;
+  const render = (suspended: boolean) => act(async () => root.render(createElement(ReaderView, { book, onBack: back, onQuit: quit, saveRef, suspended })));
+  await render(false);
+  await act(async () => useSettings.getState().patch({ txt: { fallbackChunkChars: 7000 } }));
+  expect(prepares).toBe(2);
+  expect(mocks.mount).toHaveBeenCalledOnce();
+  await render(true);
+  await render(false);
+  expect(prepares).toBe(3);
+  expect(mocks.mount).toHaveBeenCalledTimes(2);
+  await render(true); await render(false);
+  expect(prepares).toBe(3);
+});
+it('shows the fatal panel when a global TXT re-split cannot remount', async () => {
+  const original = mocks.invoke.getMockImplementation()!;
+  mocks.invoke.mockImplementation(async (command: string, args: never) => command === 'txt_prepare' ? txtExample.result : original(command, args));
+  const book = { ...openExample.result.book, format: 'txt' } as BookRecord;
+  await act(async () => root.render(createElement(ReaderView, { book, onBack: back, onQuit: quit, saveRef })));
+  mocks.mount.mockRejectedValueOnce({ code: 'IO_ERROR', message: 'mount failed' });
+  await act(async () => useSettings.getState().patch({ txt: { fallbackChunkChars: 7500 } }));
+  expect(container.querySelector('.reader-error[role="alert"]')?.textContent).toContain('A file could not be read or written.');
+});
+
+it('keeps a chapter label and readout visible during a cold fragment measurement', async () => {
+  const { ReaderChrome } = await import('./ReaderChrome');
+  disk.chrome.footerProgress = 'chapter';
+  const source = await epubSource('fixture');
+  source.toc = [{ label: 'First chapter', href: 'one#first' }, { label: 'Subheading', href: 'one#second' }];
+  let release!: (doc: Document) => void;
+  source.sections = [{ ...source.sections[0]!, createDocument: () => new Promise<Document>((resolve) => { release = resolve; }) }];
+  source.resolveHref = () => ({ index: 0, anchor: (doc) => doc.body });
+  vi.mocked(epubSource).mockResolvedValueOnce(source);
+  const original = mocks.invoke.getMockImplementation()!;
+  mocks.invoke.mockImplementation(async (command: string, args: never) => command === 'book_open'
+    ? { ...openExample.result, epubMetrics: { fileHash: 'a'.repeat(64), sectionChars: [], tocFragmentOffsets: {} } }
+    : original(command, args));
+  const restored = { ...mocks.current, sectionIndex: 0, cfi: 'epubcfi(/6/2!/4/2/1:2)', charOffset: 2 };
+  mocks.saved = restored;
+  await open();
+  const chrome = vi.mocked(ReaderChrome).mock.calls.at(-1)![0];
+  expect(chrome.readout).toBe('Preparing chapters…');
+  expect((chrome.title as React.ReactElement<{ chapter: string }>).props.chapter).toBe('First chapter');
+  expect(mocks.mount).toHaveBeenCalledOnce();
+  expect(mocks.mount.mock.calls[0]![3]).toEqual(restored);
+  expect(container.textContent).not.toContain('Preparing reading progress');
+  const bridge = vi.mocked(createRenderer).mock.calls[0]![1]!.locatorBridge!;
+  expect(bridge.sectionChars?.()).toBeNull();
+  // The user can keep reading while the measurement is pending; completion reads that live spot.
+  const live = { ...restored, charOffset: 3, progress: 0.5, globalCharOffset: 3 };
+  mocks.getLocator.mockReturnValue(live);
+  await act(async () => vi.waitFor(() => expect(release).toBeTypeOf('function')));
+  await act(async () => release(new DOMParser().parseFromString('<body>😀text</body>', 'text/html')));
+  expect(mocks.mount).toHaveBeenCalledOnce();
+  expect(mocks.goTo).not.toHaveBeenCalled();
+  expect(bridge.sectionChars?.()).toEqual([6]);
+  expect(container.textContent).toContain('50.0%');
+  expect(vi.mocked(ReaderChrome).mock.calls.at(-1)![0].readout).not.toBe('Preparing chapters…');
+});
+it('does not consume a newer TXT settings edit while an older split is preparing', async () => {
+  const original = mocks.invoke.getMockImplementation()!;
+  let prepares = 0;
+  let release!: () => void;
+  mocks.invoke.mockImplementation(async (command: string, args: never) => {
+    if (command === 'txt_prepare') {
+      if (++prepares === 2) await new Promise<void>((resolve) => { release = resolve; });
+      return txtExample.result;
+    }
+    return original(command, args);
+  });
+  const book = { ...openExample.result.book, format: 'txt' } as BookRecord;
+  await act(async () => root.render(createElement(ReaderView, { book, onBack: back, onQuit: quit, saveRef })));
+  await act(async () => useSettings.getState().patch({ txt: { fallbackChunkChars: 6000 } }));
+  expect(prepares).toBe(2);
+  await act(async () => useSettings.getState().patch({ txt: { fallbackChunkChars: 6500 } }));
+  await act(async () => release());
+  expect(prepares).toBe(3);
+  expect(mocks.mount).toHaveBeenCalledTimes(3);
 });

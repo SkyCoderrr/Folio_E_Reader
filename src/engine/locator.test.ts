@@ -91,3 +91,10 @@ describe('locator serialization and resolution (jsdom has no line layout)', () =
     expect(set.mock.calls[1]?.[1]).toEqual(position(9));
   });
 });
+
+it('provides EPUB global UTF-16 offsets from cached section characters', () => {
+  const bridge = createLocatorBridge(3, () => [10, 4, 8]);
+  expect(bridge.globalCharOffset?.(2, 3)).toBe(17);
+  expect(bridge.globalCharOffset?.(1, 99)).toBe(14);
+  expect(createLocatorBridge(3).globalCharOffset?.(1, 0)).toBeNull();
+});

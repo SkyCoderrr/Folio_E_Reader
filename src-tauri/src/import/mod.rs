@@ -1,3 +1,5 @@
+mod access;
+pub use access::FileAccess;
 mod covers;
 pub mod epub_meta;
 pub mod journal;
@@ -21,13 +23,17 @@ pub enum ImportEvent {
     Item(Box<ImportItemPayload>),
     Done(ImportDonePayload),
 }
+struct Job {
+    args: LibraryImportArgs,
+    revision: u64,
+}
 struct Queue {
-    sender: mpsc::Sender<LibraryImportArgs>,
+    sender: mpsc::Sender<Job>,
     accepted: HashSet<String>,
 }
 pub struct Library {
     pub db: Arc<Database>,
-    pub mutation: Arc<Mutex<()>>,
+    pub access: Arc<FileAccess>,
     queue: Mutex<Queue>,
     closing: Arc<AtomicBool>,
     startup: Result<(), AppError>,
@@ -37,9 +43,9 @@ pub struct Library {
 impl Library {
     pub fn start(db: Database, emit: impl Fn(ImportEvent) + Send + 'static) -> Self {
         let db = Arc::new(db);
-        let mutation = Arc::new(Mutex::new(()));
+        let access = Arc::new(FileAccess::default());
         let closing = Arc::new(AtomicBool::new(false));
-        let (sender, receiver) = mpsc::channel::<LibraryImportArgs>();
+        let (sender, receiver) = mpsc::channel::<Job>();
         let pending = Arc::new((Mutex::new(0usize), std::sync::Condvar::new()));
         let journal = db
             .available()
@@ -51,17 +57,18 @@ impl Library {
         let journal = journal.ok().map(|journal| Arc::new(Mutex::new(journal)));
         if let Some(journal) = journal.clone() {
             let pending = pending.clone();
-            let (db, mutation, closing) = (db.clone(), mutation.clone(), closing.clone());
+            let (db, access, closing) = (db.clone(), access.clone(), closing.clone());
             std::thread::spawn(move || {
-                for args in receiver {
+                for job in receiver {
                     if closing.load(Ordering::Acquire) {
                         break;
                     }
-                    run_job_until(
+                    run_accepted_job(
                         &db,
-                        &mutation,
+                        &access,
                         &mut journal.lock().unwrap_or_else(|e| e.into_inner()),
-                        args,
+                        job.args,
+                        job.revision,
                         &emit,
                         &closing,
                     );
@@ -73,7 +80,7 @@ impl Library {
         }
         Self {
             db,
-            mutation,
+            access,
             queue: Mutex::new(Queue {
                 sender,
                 accepted: HashSet::new(),
@@ -95,7 +102,7 @@ impl Library {
         }
         Ok(())
     }
-    /// Block admission of new jobs, drain whole accepted jobs, then take the shared mutation lock.
+    /// Block admission of new jobs, drain whole accepted jobs, then exclude conflicting file commands.
     pub fn with_idle<T>(
         &self,
         operation: impl FnOnce() -> Result<T, AppError>,
@@ -117,13 +124,21 @@ impl Library {
         if self.closing.load(Ordering::Acquire) {
             return Err(invalid("path", "Application is closing"));
         }
-        let _mutation = self.mutation.lock().map_err(crate::db::db_error)?;
+        let _root = self.access.root.write().map_err(crate::db::db_error)?;
         operation()
     }
     pub fn close(&self) {
         let _pending = self.pending.0.lock().unwrap_or_else(|e| e.into_inner());
         self.closing.store(true, Ordering::Release);
         self.pending.1.notify_all();
+    }
+    pub fn remove(&self, ids: &[String]) -> Result<LibraryRemoveResult, AppError> {
+        self.access.with_books(ids, || {
+            let result = self.db.remove(ids)?;
+            // Invalidate even absent ids: an accepted import may still be hashing them.
+            self.access.removed(ids)?;
+            Ok(result)
+        })
     }
     pub fn checkpoint(&self) {
         if let Err(e) = self.db.with(|c| {
@@ -171,9 +186,12 @@ impl Library {
         let mut pending = self.pending.0.lock().map_err(crate::db::db_error)?;
         queue
             .sender
-            .send(LibraryImportArgs {
-                job_id: job_id.clone(),
-                paths,
+            .send(Job {
+                args: LibraryImportArgs {
+                    job_id: job_id.clone(),
+                    paths,
+                },
+                revision: self.access.revision(),
             })
             .map_err(crate::db::db_error)?;
         *pending += 1;
@@ -183,24 +201,33 @@ impl Library {
 }
 pub fn run_job(
     db: &Database,
-    mutation: &Mutex<()>,
+    access: &FileAccess,
     journal: &mut journal::Journal,
     args: LibraryImportArgs,
     emit: &impl Fn(ImportEvent),
 ) {
-    run_job_until(db, mutation, journal, args, emit, &AtomicBool::new(false));
+    run_job_until(db, access, journal, args, emit, &AtomicBool::new(false));
 }
 pub fn run_job_until(
     db: &Database,
-    mutation: &Mutex<()>,
+    access: &FileAccess,
     journal: &mut journal::Journal,
     args: LibraryImportArgs,
     emit: &impl Fn(ImportEvent),
     closing: &AtomicBool,
 ) {
-    let root_check = db.profile.validate_library(&db.library_dir()).map(|root| {
-        let _ = crate::profile::library_files(&root);
-    });
+    run_accepted_job(db, access, journal, args, access.revision(), emit, closing);
+}
+fn run_accepted_job(
+    db: &Database,
+    access: &FileAccess,
+    journal: &mut journal::Journal,
+    args: LibraryImportArgs,
+    revision: u64,
+    emit: &impl Fn(ImportEvent),
+    closing: &AtomicBool,
+) {
+    let root_check = db.profile.validate_library(&db.library_dir());
     let candidates = walk::enumerate(&args.paths);
     let total = candidates.len() as u32;
     let mut done = ImportDonePayload {
@@ -227,7 +254,16 @@ pub fn run_job_until(
                 root_check.clone()?;
                 // A failed item must never unwind the worker and lose completion.
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    pipeline::item_with_commit(db, journal, &candidate.path, mutation)
+                    pipeline::item_with_control(
+                        db,
+                        journal,
+                        &candidate.path,
+                        &pipeline::ImportControl {
+                            access,
+                            revision,
+                            closing,
+                        },
+                    )
                 }))
                 .unwrap_or_else(|_| {
                     Err(AppError::new(ErrorCode::Internal, "Import worker panicked"))
@@ -272,7 +308,7 @@ pub fn run_job_until(
 mod batch2_tests {
     use super::*;
     #[test]
-    fn validates_tree_once_per_job_and_closing_stops_admission() {
+    fn closing_stops_between_items_without_scanning_unrelated_library_files() {
         let temp = tempfile::tempdir().unwrap();
         let profile = crate::profile::Profile::resolve(
             Some(temp.path().join("profile").into_os_string()),
@@ -291,7 +327,7 @@ mod batch2_tests {
         let seen = std::cell::Cell::new(0);
         run_job_until(
             &db,
-            &Mutex::new(()),
+            &FileAccess::default(),
             &mut journal::Journal::load(&db).unwrap(),
             LibraryImportArgs {
                 job_id: "close".into(),
@@ -307,6 +343,6 @@ mod batch2_tests {
         );
         assert_eq!(seen.get(), 1);
         assert_eq!(db.list().unwrap().len(), 1);
-        crate::profile::LIBRARY_SCANS.with(|count| assert_eq!(count.get(), 1));
+        crate::profile::LIBRARY_SCANS.with(|count| assert_eq!(count.get(), 0));
     }
 }
